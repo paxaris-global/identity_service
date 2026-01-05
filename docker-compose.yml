@@ -1,0 +1,32 @@
+server:
+  port: 8085
+
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  main:
+    web-application-type: reactive
+  cloud:
+    gateway:
+      routes:
+        - id: product_service_route
+          uri: http://project-manager:8088
+
+          predicates:
+            - Path=/product/**
+          filters:
+            - StripPrefix=1
+        - id: identity_service_route
+          uri: http://localhost:8087
+          predicates:
+            - Path=/**
+          filters:
+            - StripPrefix=1
+
+logging:
+  level:
+    root: INFO
+    com.example.gateway: DEBUG
