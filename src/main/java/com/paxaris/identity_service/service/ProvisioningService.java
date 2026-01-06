@@ -17,32 +17,25 @@ import java.util.zip.ZipInputStream;
 public class ProvisioningService {
 
     private final String githubToken;
-    private final String githubOrg;
+    private final String githubOrg;  // can be null or empty for user repo
 
     public ProvisioningService(
             @Value("${github.token}") String githubToken,
-            @Value("${github.org}") String githubOrg
+            @Value("${github.org:}") String githubOrg // default empty if not set
     ) {
         if (githubToken == null || githubToken.isBlank()) {
             throw new IllegalStateException("GITHUB_TOKEN is missing");
         }
-        if (githubOrg == null || githubOrg.isBlank()) {
-            throw new IllegalStateException("GITHUB_ORG is missing");
-        }
         this.githubToken = githubToken;
-        this.githubOrg = githubOrg;
+        this.githubOrg = (githubOrg == null || githubOrg.isBlank()) ? null : githubOrg;
     }
 
-    // =========================================================
-    // ENTRY POINT
-    // =========================================================
     public void provisionRepoAndPushZip(
             String realmName,
             String clientId,
             MultipartFile sourceZip
     ) {
         String repoName = realmName + "-" + clientId;
-
         Path extractedDir = null;
 
         try {
@@ -66,12 +59,15 @@ public class ProvisioningService {
         }
     }
 
-    // =========================================================
-    // GITHUB REPO CREATION (ORG)
-    // =========================================================
     private void createGitHubRepo(String repoName) throws IOException {
-
-        String apiUrl = "https://api.github.com/orgs/" + githubOrg + "/repos";
+        String apiUrl;
+        if (githubOrg != null) {
+            // Create repo inside org
+            apiUrl = "https://api.github.com/orgs/" + githubOrg + "/repos";
+        } else {
+            // Create repo under user account
+            apiUrl = "https://api.github.com/user/repos";
+        }
 
         String payload = """
         {
@@ -87,26 +83,29 @@ public class ProvisioningService {
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setDoOutput(true);
 
-        conn.getOutputStream().write(payload.getBytes(StandardCharsets.UTF_8));
+        try (OutputStream os = conn.getOutputStream()) {
+            os.write(payload.getBytes(StandardCharsets.UTF_8));
+        }
 
-        if (conn.getResponseCode() != 201) {
-            String error = conn.getErrorStream() != null
-                    ? new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8)
-                    : "unknown error";
-            throw new IOException("GitHub repo creation failed: " + error);
+        int responseCode = conn.getResponseCode();
+
+        if (responseCode != 201) {
+            String error = "";
+            try (InputStream errorStream = conn.getErrorStream()) {
+                if (errorStream != null) {
+                    error = new String(errorStream.readAllBytes(), StandardCharsets.UTF_8);
+                }
+            }
+            throw new IOException("GitHub repo creation failed: HTTP " + responseCode + " - " + error);
         }
     }
 
-    // =========================================================
-    // ZIP EXTRACTION
-    // =========================================================
     private Path unzip(MultipartFile zipFile) throws IOException {
         Path tempDir = Files.createTempDirectory("repo-");
 
         try (ZipInputStream zis = new ZipInputStream(zipFile.getInputStream())) {
             ZipEntry entry;
             while ((entry = zis.getNextEntry()) != null) {
-
                 Path path = tempDir.resolve(entry.getName()).normalize();
 
                 if (!path.startsWith(tempDir)) {
@@ -119,17 +118,12 @@ public class ProvisioningService {
                     Files.createDirectories(path.getParent());
                     Files.copy(zis, path, StandardCopyOption.REPLACE_EXISTING);
                 }
+                zis.closeEntry();
             }
         }
         return tempDir;
     }
 
-    /**
-     * Handles ZIPs like:
-     * my-project/
-     *   pom.xml
-     *   src/
-     */
     private Path resolveProjectRoot(Path extractedDir) throws IOException {
         try (var files = Files.list(extractedDir)) {
             var list = files.toList();
@@ -140,9 +134,6 @@ public class ProvisioningService {
         }
     }
 
-    // =========================================================
-    // GIT INIT + PUSH
-    // =========================================================
     private void gitInitAddCommitPush(Path repoDir, String repoName)
             throws IOException, InterruptedException {
 
@@ -151,44 +142,58 @@ public class ProvisioningService {
         run(repoDir, "git", "config", "user.email", "ci@paxaris.com");
         run(repoDir, "git", "branch", "-M", "main");
 
-        run(repoDir, "git", "remote", "add", "origin",
-                "https://github.com/" + githubOrg + "/" + repoName + ".git");
+        String remoteUrl;
+        if (githubOrg != null) {
+            remoteUrl = "https://github.com/" + githubOrg + "/" + repoName + ".git";
+        } else {
+            // User account repo
+            remoteUrl = "https://github.com/" + repoName + ".git";
+        }
+
+        run(repoDir, "git", "remote", "add", "origin", remoteUrl);
 
         run(repoDir, "git", "add", ".");
         run(repoDir, "git", "commit", "-m", "Initial commit");
 
-        run(repoDir, "git", "push",
-                "https://x-access-token:" + githubToken +
-                        "@github.com/" + githubOrg + "/" + repoName + ".git",
-                "main");
+        // Use token in push URL for authentication
+        String pushUrl;
+        if (githubOrg != null) {
+            pushUrl = "https://x-access-token:" + githubToken + "@github.com/" + githubOrg + "/" + repoName + ".git";
+        } else {
+            pushUrl = "https://x-access-token:" + githubToken + "@github.com/" + repoName + ".git";
+        }
+
+        run(repoDir, "git", "push", pushUrl, "main");
     }
 
-    private void run(Path dir, String... cmd)
-            throws IOException, InterruptedException {
-
+    private void run(Path dir, String... cmd) throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.directory(dir.toFile());
         pb.redirectErrorStream(true);
 
         Process p = pb.start();
-        try (BufferedReader reader =
-                     new BufferedReader(new InputStreamReader(p.getInputStream()))) {
 
-            while (reader.readLine() != null) {}
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                System.out.println(line);
+            }
         }
 
-        if (p.waitFor() != 0) {
-            throw new IOException("Command failed: " + String.join(" ", cmd));
+        int exitCode = p.waitFor();
+        if (exitCode != 0) {
+            throw new IOException("Command failed (" + exitCode + "): " + String.join(" ", cmd));
         }
     }
 
-    // =========================================================
-    // TRIGGER CENTRAL CI
-    // =========================================================
     private void triggerCentralCIPipeline(String repoName) throws IOException {
+        if (githubOrg == null) {
+            // You may want to skip or adjust this for user repos, depending on your CI setup
+            System.out.println("Skipping CI trigger since repo is created under user, not org.");
+            return;
+        }
 
-        String apiUrl =
-                "https://api.github.com/repos/" + githubOrg + "/central-ci-repo/dispatches";
+        String apiUrl = "https://api.github.com/repos/" + githubOrg + "/central-ci-repo/dispatches";
 
         String payload = """
         {
@@ -206,23 +211,23 @@ public class ProvisioningService {
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setDoOutput(true);
 
-        conn.getOutputStream().write(payload.getBytes(StandardCharsets.UTF_8));
+        try (OutputStream os = conn.getOutputStream()) {
+            os.write(payload.getBytes(StandardCharsets.UTF_8));
+        }
 
         if (conn.getResponseCode() != 204) {
             throw new IOException("CI trigger failed: HTTP " + conn.getResponseCode());
         }
     }
 
-    // =========================================================
-    // CLEANUP
-    // =========================================================
     private void deleteDirectory(Path path) throws IOException {
         Files.walk(path)
                 .sorted(Comparator.reverseOrder())
                 .forEach(p -> {
                     try {
                         Files.delete(p);
-                    } catch (IOException ignored) {}
+                    } catch (IOException ignored) {
+                    }
                 });
     }
 }
