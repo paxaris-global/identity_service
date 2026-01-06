@@ -120,15 +120,13 @@
 					</from>
 					<to>
 						<image>devopspaxarisglobal/identity-service:latest</image>
-						<auth>
 
-						</auth>
 					</to>
 					<container>
 						<ports>
 							<port>8081</port>
 						</ports>
-						<mainClass>com.paxaris.identity_service.identityService</mainClass>
+						<mainClass>com.paxaris.identity_service.IdentityService</mainClass>
 					</container>
 				</configuration>
 			</plugin>
