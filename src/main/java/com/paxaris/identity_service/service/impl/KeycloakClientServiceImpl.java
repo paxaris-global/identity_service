@@ -605,7 +605,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
     // ---------------- SIGNUP ----------------
     @Override
-    public void signup(SignupRequest request , MultipartFile dockerImage) {
+    public void signup(SignupRequest request , MultipartFile sourceZip) {
         log.info("🚀 Starting signup process for product '{}', realm '{}'",
                 request.getClientId(), request.getRealmName());
 
@@ -701,7 +701,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         provisioningService.provisionRepoAndPushZip(
                 request.getRealmName(),
                 request.getClientId(),
-                dockerImage
+                sourceZip
         );
 
 

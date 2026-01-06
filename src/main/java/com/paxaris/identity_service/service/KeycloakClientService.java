@@ -48,6 +48,6 @@ public interface KeycloakClientService {
     // Signup operation
 //    void signup(SignupRequest request);
 
-        void signup(SignupRequest request, MultipartFile dockerImage);
+        void signup(SignupRequest request, MultipartFile sourceZip);
 
 }

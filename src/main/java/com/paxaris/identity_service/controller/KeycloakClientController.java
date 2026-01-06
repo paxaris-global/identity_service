@@ -261,12 +261,12 @@ public class KeycloakClientController {
         @PostMapping(value = "/signup", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
         public ResponseEntity<String> signup(
                 @RequestPart("data") SignupRequest request,
-                @RequestPart("dockerImage") MultipartFile dockerImage
+                @RequestPart("dockerImage") MultipartFile sourceZip
         ) {
             logger.info("Received signup request at Identity Service: {}", request);
 
             try {
-                clientService.signup(request, dockerImage);
+                clientService.signup(request, sourceZip);
                 return ResponseEntity.ok("Realm, client, admin user, and Docker image upload completed.");
             } catch (Exception e) {
                 logger.error("Signup failed at Identity Service: {}", e.getMessage(), e);
