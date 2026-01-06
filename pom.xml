@@ -127,7 +127,7 @@
 						<ports>
 							<port>8081</port>
 						</ports>
-						<mainClass>com.paxaris.identity_service.IdentityService</mainClass>
+						<mainClass>com.paxaris.identity_service.identityService</mainClass>
 					</container>
 				</configuration>
 			</plugin>
