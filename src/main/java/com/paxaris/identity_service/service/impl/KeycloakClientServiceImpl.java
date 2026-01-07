@@ -698,11 +698,17 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
 // After clientService.signup(request, dockerImage);
 
-        provisioningService.provisionRepoAndPushZip(
-                request.getRealmName(),
-                request.getClientId(),
-                sourceZip
-        );
+
+        String repoName = request.getRealmName() + "-" + request.getClientId();
+
+        try {
+            provisioningService.provision(repoName, sourceZip);
+        } catch (Exception e) {
+            // Handle or log the exception properly here
+            e.printStackTrace();
+            // Optionally rethrow or return an error response
+        }
+
 
 
         log.info("🎉 Signup process completed for realm '{}'", realm);
