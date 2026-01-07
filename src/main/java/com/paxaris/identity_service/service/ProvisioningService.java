@@ -21,15 +21,18 @@ public class ProvisioningService {
     private final String githubUser;
     private final String dockerHubUser;
 
+
     public ProvisioningService(
             @Value("${github.token}") String githubToken,
-            @Value("${github.user}") String githubUser,
-            @Value("${dockerhub.user}") String dockerHubUser
+            @Value("${github.org}") String githubUser,
+            @Value("${docker.hub.username}") String dockerHubUser
     ) {
         this.githubToken = githubToken;
         this.githubUser = githubUser;
         this.dockerHubUser = dockerHubUser;
     }
+
+
 
     public void provision(String repoName, MultipartFile zipFile) throws Exception {
 
