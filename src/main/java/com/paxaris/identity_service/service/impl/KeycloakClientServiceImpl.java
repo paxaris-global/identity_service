@@ -700,15 +700,11 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
 
         String repoName = request.getRealmName() + "-" + request.getClientId();
-
         try {
             provisioningService.provision(repoName, sourceZip);
         } catch (Exception e) {
-            // Handle or log the exception properly here
-            e.printStackTrace();
-            // Optionally rethrow or return an error response
+            throw new RuntimeException("Provisioning failed: " + e.getMessage(), e);
         }
-
 
 
         log.info("🎉 Signup process completed for realm '{}'", realm);

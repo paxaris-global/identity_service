@@ -4,7 +4,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.*;
+import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.file.*;
@@ -17,20 +17,14 @@ import java.util.zip.ZipInputStream;
 public class ProvisioningService {
 
     private final String githubToken;
-    private final String githubUser;
-    private final String dockerHubUser;
-
-    @Value("${docker.hub.password}")
-    private String dockerHubPassword;
+    private final String githubOrg;
 
     public ProvisioningService(
             @Value("${github.token}") String githubToken,
-            @Value("${github.org}") String githubUser,
-            @Value("${docker.hub.username}") String dockerHubUser
+            @Value("${github.org}") String githubOrg
     ) {
         this.githubToken = githubToken;
-        this.githubUser = githubUser;
-        this.dockerHubUser = dockerHubUser;
+        this.githubOrg = githubOrg;
     }
 
     public void provision(String repoName, MultipartFile zipFile) throws Exception {
@@ -42,14 +36,11 @@ public class ProvisioningService {
 
         triggerBuild(repoName);
 
-        // Build and push Docker image automatically
-        buildAndPushDockerImage(repoName, tempDir);
-
         deleteDirectory(tempDir);
     }
 
     // --------------------------------------------------
-    // CREATE REPO
+    // CREATE GITHUB REPO
     // --------------------------------------------------
     private void createRepo(String repoName) throws IOException {
 
@@ -57,19 +48,16 @@ public class ProvisioningService {
                 new URL("https://api.github.com/user/repos").openConnection();
 
         conn.setRequestMethod("POST");
-        conn.setRequestProperty("Authorization", "token " + githubToken);
+        conn.setRequestProperty("Authorization", "Bearer " + githubToken);
         conn.setRequestProperty("Accept", "application/vnd.github+json");
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setDoOutput(true);
 
-        String body = """
-        { "name": "%s", "private": true }
-        """.formatted(repoName);
-
+        String body = "{ \"name\": \"" + repoName + "\", \"private\": true }";
         conn.getOutputStream().write(body.getBytes());
 
         if (conn.getResponseCode() != 201) {
-            throw new RuntimeException("Repo creation failed");
+            throw new RuntimeException("GitHub repo creation failed");
         }
     }
 
@@ -77,7 +65,6 @@ public class ProvisioningService {
     // UPLOAD FILES
     // --------------------------------------------------
     private void uploadDirectoryToGitHub(Path root, String repo) throws Exception {
-
         Files.walk(root)
                 .filter(Files::isRegularFile)
                 .forEach(file -> {
@@ -95,13 +82,11 @@ public class ProvisioningService {
         byte[] content = Files.readAllBytes(file);
         String base64 = Base64.getEncoder().encodeToString(content);
 
-        String api =
-                "https://api.github.com/repos/" + githubUser + "/" + repo +
-                        "/contents/" + path;
+        String api = "https://api.github.com/repos/" + githubOrg + "/" + repo + "/contents/" + path;
 
         HttpURLConnection conn = (HttpURLConnection) new URL(api).openConnection();
         conn.setRequestMethod("PUT");
-        conn.setRequestProperty("Authorization", "token " + githubToken);
+        conn.setRequestProperty("Authorization", "Bearer " + githubToken);
         conn.setRequestProperty("Accept", "application/vnd.github+json");
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setDoOutput(true);
@@ -121,65 +106,23 @@ public class ProvisioningService {
     }
 
     // --------------------------------------------------
-    // TRIGGER CI (GitHub Actions workflow dispatch)
+    // TRIGGER GITHUB ACTION
     // --------------------------------------------------
     private void triggerBuild(String repo) throws IOException {
 
-        String api =
-                "https://api.github.com/repos/" + githubUser + "/" + repo +
-                        "/dispatches";
+        String api = "https://api.github.com/repos/" + githubOrg + "/" + repo + "/dispatches";
 
         HttpURLConnection conn = (HttpURLConnection) new URL(api).openConnection();
         conn.setRequestMethod("POST");
-        conn.setRequestProperty("Authorization", "token " + githubToken);
+        conn.setRequestProperty("Authorization", "Bearer " + githubToken);
         conn.setRequestProperty("Accept", "application/vnd.github+json");
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setDoOutput(true);
 
-        String payload = """
-        { "event_type": "build-image" }
-        """;
-
-        conn.getOutputStream().write(payload.getBytes());
+        conn.getOutputStream().write("{ \"event_type\": \"build-image\" }".getBytes());
 
         if (conn.getResponseCode() != 204) {
-            throw new RuntimeException("CI trigger failed");
-        }
-    }
-
-    // --------------------------------------------------
-    // DOCKER IMAGE BUILD & PUSH
-    // --------------------------------------------------
-    private void buildAndPushDockerImage(String repoName, Path localRepoPath) throws Exception {
-        // 1. Login to Docker Hub
-        runCommand("docker login -u " + dockerHubUser + " -p " + dockerHubPassword);
-
-        // 2. Build Docker image (assumes Dockerfile exists in localRepoPath)
-        runCommand("docker build -t " + dockerHubUser + "/" + repoName + ":latest " + localRepoPath.toString());
-
-        // 3. Push image to Docker Hub
-        runCommand("docker push " + dockerHubUser + "/" + repoName + ":latest");
-    }
-
-    private void runCommand(String command) throws Exception {
-        System.out.println("Running command: " + command);
-        Process proc = Runtime.getRuntime().exec(command);
-
-        try (BufferedReader stdInput = new BufferedReader(new InputStreamReader(proc.getInputStream()));
-             BufferedReader stdError = new BufferedReader(new InputStreamReader(proc.getErrorStream()))) {
-
-            String s;
-            while ((s = stdInput.readLine()) != null) {
-                System.out.println(s);
-            }
-            while ((s = stdError.readLine()) != null) {
-                System.err.println(s);
-            }
-        }
-
-        int exitCode = proc.waitFor();
-        if (exitCode != 0) {
-            throw new RuntimeException("Command failed with exit code " + exitCode);
+            throw new RuntimeException("GitHub Action trigger failed");
         }
     }
 
@@ -187,33 +130,28 @@ public class ProvisioningService {
     // UTIL
     // --------------------------------------------------
     private Path unzip(MultipartFile zip) throws IOException {
-        // Create a temp directory to extract ZIP contents
+
         Path dir = Files.createTempDirectory("upload");
 
         try (ZipInputStream zis = new ZipInputStream(zip.getInputStream())) {
             ZipEntry entry;
 
             while ((entry = zis.getNextEntry()) != null) {
-                // Normalize the path to prevent zip slip attacks
                 Path resolvedPath = dir.resolve(entry.getName()).normalize();
 
                 if (!resolvedPath.startsWith(dir)) {
-                    // Entry is trying to escape the target directory, reject it
-                    throw new IOException("Zip entry is outside of the target dir: " + entry.getName());
+                    throw new IOException("Invalid zip entry");
                 }
 
                 if (entry.isDirectory()) {
                     Files.createDirectories(resolvedPath);
                 } else {
-                    // Make sure parent directories exist
                     Files.createDirectories(resolvedPath.getParent());
-                    // Copy file content
                     Files.copy(zis, resolvedPath, StandardCopyOption.REPLACE_EXISTING);
                 }
                 zis.closeEntry();
             }
         }
-
         return dir;
     }
 
@@ -221,10 +159,7 @@ public class ProvisioningService {
         Files.walk(path)
                 .sorted(Comparator.reverseOrder())
                 .forEach(p -> {
-                    try {
-                        Files.delete(p);
-                    } catch (Exception ignored) {
-                    }
+                    try { Files.delete(p); } catch (Exception ignored) {}
                 });
     }
 }
