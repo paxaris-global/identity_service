@@ -7,12 +7,11 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
-import java.util.Base64;
 
 @Service
 public class ProvisioningService {
@@ -21,6 +20,8 @@ public class ProvisioningService {
     private final String githubUser;
     private final String dockerHubUser;
 
+    @Value("${docker.hub.password}")
+    private String dockerHubPassword;
 
     public ProvisioningService(
             @Value("${github.token}") String githubToken,
@@ -32,8 +33,6 @@ public class ProvisioningService {
         this.dockerHubUser = dockerHubUser;
     }
 
-
-
     public void provision(String repoName, MultipartFile zipFile) throws Exception {
 
         createRepo(repoName);
@@ -42,6 +41,9 @@ public class ProvisioningService {
         uploadDirectoryToGitHub(tempDir, repoName);
 
         triggerBuild(repoName);
+
+        // Build and push Docker image automatically
+        buildAndPushDockerImage(repoName, tempDir);
 
         deleteDirectory(tempDir);
     }
@@ -119,7 +121,7 @@ public class ProvisioningService {
     }
 
     // --------------------------------------------------
-    // TRIGGER CI
+    // TRIGGER CI (GitHub Actions workflow dispatch)
     // --------------------------------------------------
     private void triggerBuild(String repo) throws IOException {
 
@@ -142,6 +144,42 @@ public class ProvisioningService {
 
         if (conn.getResponseCode() != 204) {
             throw new RuntimeException("CI trigger failed");
+        }
+    }
+
+    // --------------------------------------------------
+    // DOCKER IMAGE BUILD & PUSH
+    // --------------------------------------------------
+    private void buildAndPushDockerImage(String repoName, Path localRepoPath) throws Exception {
+        // 1. Login to Docker Hub
+        runCommand("docker login -u " + dockerHubUser + " -p " + dockerHubPassword);
+
+        // 2. Build Docker image (assumes Dockerfile exists in localRepoPath)
+        runCommand("docker build -t " + dockerHubUser + "/" + repoName + ":latest " + localRepoPath.toString());
+
+        // 3. Push image to Docker Hub
+        runCommand("docker push " + dockerHubUser + "/" + repoName + ":latest");
+    }
+
+    private void runCommand(String command) throws Exception {
+        System.out.println("Running command: " + command);
+        Process proc = Runtime.getRuntime().exec(command);
+
+        try (BufferedReader stdInput = new BufferedReader(new InputStreamReader(proc.getInputStream()));
+             BufferedReader stdError = new BufferedReader(new InputStreamReader(proc.getErrorStream()))) {
+
+            String s;
+            while ((s = stdInput.readLine()) != null) {
+                System.out.println(s);
+            }
+            while ((s = stdError.readLine()) != null) {
+                System.err.println(s);
+            }
+        }
+
+        int exitCode = proc.waitFor();
+        if (exitCode != 0) {
+            throw new RuntimeException("Command failed with exit code " + exitCode);
         }
     }
 
@@ -179,12 +217,14 @@ public class ProvisioningService {
         return dir;
     }
 
-
     private void deleteDirectory(Path path) throws IOException {
         Files.walk(path)
                 .sorted(Comparator.reverseOrder())
                 .forEach(p -> {
-                    try { Files.delete(p); } catch (Exception ignored) {}
+                    try {
+                        Files.delete(p);
+                    } catch (Exception ignored) {
+                    }
                 });
     }
 }
