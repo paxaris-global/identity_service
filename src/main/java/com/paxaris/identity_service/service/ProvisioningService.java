@@ -44,8 +44,10 @@ public class ProvisioningService {
     // --------------------------------------------------
     private void createRepo(String repoName) throws IOException {
 
+        String apiUrl = "https://api.github.com/orgs/" + githubOrg + "/repos";
+
         HttpURLConnection conn = (HttpURLConnection)
-                new URL("https://api.github.com/user/repos").openConnection();
+                new URL(apiUrl).openConnection();
 
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Authorization", "Bearer " + githubToken);
@@ -53,13 +55,23 @@ public class ProvisioningService {
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setDoOutput(true);
 
-        String body = "{ \"name\": \"" + repoName + "\", \"private\": true }";
+        String body = """
+    {
+      "name": "%s",
+      "private": true,
+      "auto_init": true
+    }
+    """.formatted(repoName);
+
         conn.getOutputStream().write(body.getBytes());
 
-        if (conn.getResponseCode() != 201) {
-            throw new RuntimeException("GitHub repo creation failed");
+        int responseCode = conn.getResponseCode();
+
+        if (responseCode != 201) {
+            throw new RuntimeException("GitHub org repo creation failed. HTTP " + responseCode);
         }
     }
+
 
     // --------------------------------------------------
     // UPLOAD FILES
@@ -134,6 +146,8 @@ public class ProvisioningService {
         Path dir = Files.createTempDirectory("upload");
 
         try (ZipInputStream zis = new ZipInputStream(zip.getInputStream())) {
+
+
             ZipEntry entry;
 
             while ((entry = zis.getNextEntry()) != null) {
