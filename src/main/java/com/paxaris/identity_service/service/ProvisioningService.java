@@ -18,6 +18,14 @@ public class ProvisioningService {
 
     private final String githubToken;
     private final String githubOrg;
+    
+    public String getGithubToken() {
+        return githubToken;
+    }
+    
+    public String getGithubOrg() {
+        return githubOrg;
+    }
 
     public ProvisioningService(
             @Value("${github.token}") String githubToken,
@@ -27,22 +35,35 @@ public class ProvisioningService {
         this.githubOrg = githubOrg;
     }
 
-    public void provision(String repoName, MultipartFile zipFile) throws Exception {
+    public Path provision(String repoName, MultipartFile zipFile) throws Exception {
 
         createRepo(repoName);
 
         Path tempDir = unzip(zipFile);
         uploadDirectoryToGitHub(tempDir, repoName);
 
-        triggerBuild(repoName);
+        // Note: We don't trigger GitHub Action build anymore as we'll build Docker image directly
+        // triggerBuild(repoName);
 
-        deleteDirectory(tempDir);
+        // Return the temp directory path so it can be used for Docker build
+        // Caller is responsible for cleanup
+        return tempDir;
+    }
+    
+    /**
+     * Creates a repository name using realm name, admin username (realm.nadm format), and client name
+     */
+    public static String generateRepositoryName(String realmName, String adminUsername, String clientName) {
+        // Format: realm-admin-client (e.g., "myrealm-adminuser-myclient")
+        // Using admin username in realm.nadm format as specified
+        String adminPart = adminUsername != null ? adminUsername : "admin";
+        return String.format("%s-%s-%s", realmName, adminPart, clientName).toLowerCase();
     }
 
     // --------------------------------------------------
     // CREATE GITHUB REPO
     // --------------------------------------------------
-    private void createRepo(String repoName) throws IOException {
+    public void createRepo(String repoName) throws IOException {
 
         String apiUrl = "https://api.github.com/orgs/" + githubOrg + "/repos";
 

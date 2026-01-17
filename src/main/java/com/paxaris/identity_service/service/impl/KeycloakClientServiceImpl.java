@@ -5,6 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paxaris.identity_service.dto.*;
 import com.paxaris.identity_service.service.KeycloakClientService;
 import com.paxaris.identity_service.service.ProvisioningService;
+import com.paxaris.identity_service.service.DockerHubService;
+import com.paxaris.identity_service.service.DockerBuildService;
+import com.paxaris.identity_service.dto.SignupStatus;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +24,11 @@ import org.springframework.web.reactive.function.client.WebClient;
 
 
 import java.util.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.Base64;
 
 @Service
 @RequiredArgsConstructor
@@ -32,8 +40,12 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
     private final ProvisioningService provisioningService;
+    private final DockerHubService dockerHubService;
+    private final DockerBuildService dockerBuildService;
     @Value("${project.management.base-url}")
     private String projectManagementBaseUrl;
+    @Value("${docker.hub.username}")
+    private String dockerHubUsername;
 
     // This method is now private and used internally to avoid duplication
     private String getMasterToken() {
@@ -605,33 +617,47 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
     // ---------------- SIGNUP ----------------
     @Override
-    public void signup(SignupRequest request , MultipartFile sourceZip) {
-        log.info("🚀 Starting signup process for product '{}', realm '{}'",
+    public SignupStatus signup(SignupRequest request, MultipartFile sourceZip) {
+        SignupStatus status = SignupStatus.builder()
+                .status("IN_PROGRESS")
+                .message("Signup process started")
+                .steps(new ArrayList<>())
+                .build();
+
+        log.info("🚀 Starting comprehensive signup process for product '{}', realm '{}'",
                 request.getClientId(), request.getRealmName());
 
-        String masterToken = getMasterToken();
-        log.debug("✅ Master token retrieved successfully (length = {})",
-                masterToken != null ? masterToken.length() : 0);
-
+        String masterToken = null;
         String realm = request.getRealmName() != null ? request.getRealmName() : "default-realm";
         String clientId = request.getClientId() != null ? request.getClientId() : "default-client";
+        String adminUsername = request.getAdminUser() != null ? request.getAdminUser().getUsername() : "admin";
+        Path extractedCodePath = null;
 
         try {
-            // Step 1: Create Realm
-            log.info("🧱 Step 1: Creating realm '{}'", realm);
+            // Step 1: Get Master Token
+            status.addStep("Get Master Token", "IN_PROGRESS", "Authenticating with Keycloak master realm");
+            log.info("🔐 Step 1: Getting master token");
+            masterToken = getMasterToken();
+            status.addStep("Get Master Token", "SUCCESS", "Master token retrieved successfully");
+
+            // Step 2: Create Realm
+            status.addStep("Create Realm", "IN_PROGRESS", "Creating Keycloak realm: " + realm);
+            log.info("🧱 Step 2: Creating realm '{}'", realm);
             createRealm(realm, masterToken);
-            log.info("✅ Realm '{}' created successfully", realm);
+            status.addStep("Create Realm", "SUCCESS", "Realm '" + realm + "' created successfully");
 
-            // Step 2: Create Client
-            log.info("🧩 Step 2: Creating client '{}'", clientId);
+            // Step 3: Create Client
+            status.addStep("Create Client", "IN_PROGRESS", "Creating Keycloak client: " + clientId);
+            log.info("🧩 Step 3: Creating client '{}'", clientId);
             String clientUUID = createClient(realm, clientId, request.isPublicClient(), masterToken);
-            log.info("✅ Client created successfully with ID: {}", clientUUID);
+            status.addStep("Create Client", "SUCCESS", "Client '" + clientId + "' created successfully with UUID: " + clientUUID);
 
-            // Step 3: Create Admin User
-            log.info("👤 Step 3: Creating admin user '{}'", request.getAdminUser().getUsername());
+            // Step 4: Create Admin User
+            status.addStep("Create Admin User", "IN_PROGRESS", "Creating admin user: " + adminUsername);
+            log.info("👤 Step 4: Creating admin user '{}'", adminUsername);
 
             Map<String, Object> userMap = new HashMap<>();
-            userMap.put("username", request.getAdminUser().getUsername());
+            userMap.put("username", adminUsername);
             userMap.put("email", request.getAdminUser().getEmail());
             userMap.put("firstName", request.getAdminUser().getFirstName());
             userMap.put("lastName", request.getAdminUser().getLastName());
@@ -644,36 +670,31 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             );
             userMap.put("credentials", List.of(credentials));
 
-            log.debug("🧾 User payload: {}", userMap);
-
             String userId = createUser(realm, masterToken, userMap);
-            log.info("✅ Admin user created successfully with ID: {}", userId);
+            status.addStep("Create Admin User", "SUCCESS", "Admin user '" + adminUsername + "' created successfully");
 
-            // Step 4: Assign default roles
-            log.info("🔑 Step 4: Assigning default admin roles to '{}'", request.getAdminUser().getUsername());
-            List<String> defaultRoles = List.of("create-client", "impersonation", "manage-realm", "manage-users","manage-clients");
+            // Step 5: Assign default roles
+            status.addStep("Assign Admin Roles", "IN_PROGRESS", "Assigning default admin roles");
+            log.info("🔑 Step 5: Assigning default admin roles to '{}'", adminUsername);
+            List<String> defaultRoles = List.of("create-client", "impersonation", "manage-realm", "manage-users", "manage-clients");
             for (String role : defaultRoles) {
                 assignRealmManagementRoleToUser(realm, userId, role, masterToken);
-                log.debug("➡️ Assigned realm-management role '{}'", role);
             }
-            log.info("✅ Default admin roles assigned successfully.");
+            status.addStep("Assign Admin Roles", "SUCCESS", "Default admin roles assigned successfully");
 
-            // Step 5: Send data to Project Management Service
-            log.info("📤 Step 5: Sending project info to Project Management Service...");
+            // Step 6: Send data to Project Management Service
+            status.addStep("Update Project Manager", "IN_PROGRESS", "Sending project info to Project Management Service");
+            log.info("📤 Step 6: Sending project info to Project Management Service...");
 
-            // Create UrlEntry
             UrlEntry urlEntry = new UrlEntry();
             urlEntry.setUrl(request.getUrl());
             urlEntry.setUri(request.getUri());
 
-            // Create RoleRequest
             RoleRequest roleRequest = new RoleRequest();
             roleRequest.setRealmName(realm);
             roleRequest.setProductName(clientId);
             roleRequest.setRoleName("admin");
             roleRequest.setUrls(List.of(urlEntry));
-
-            log.debug("📦 Payload to Project Manager: {}", roleRequest);
 
             WebClient webClient = WebClient.builder()
                     .baseUrl(projectManagementBaseUrl)
@@ -684,30 +705,172 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
                     .bodyValue(roleRequest)
                     .retrieve()
                     .toBodilessEntity()
-                    .doOnSubscribe(s -> log.info("🌐 Sending data to Project Manager..."))
-                    .doOnSuccess(r -> log.info("✅ Successfully stored data in Project Manager."))
-                    .doOnError(e -> log.error("❌ Error storing data in Project Manager: {}", e.getMessage(), e))
                     .block();
+
+            status.addStep("Update Project Manager", "SUCCESS", "Project info sent to Project Management Service");
+
+            // Step 7: Extract ZIP file
+            status.addStep("Extract Application Code", "IN_PROGRESS", "Extracting uploaded ZIP file");
+            log.info("📦 Step 7: Extracting application code from ZIP file");
+            extractedCodePath = Files.createTempDirectory("signup-extract-" + System.currentTimeMillis());
+            try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(sourceZip.getInputStream())) {
+                java.util.zip.ZipEntry entry;
+                while ((entry = zis.getNextEntry()) != null) {
+                    Path resolvedPath = extractedCodePath.resolve(entry.getName()).normalize();
+                    if (!resolvedPath.startsWith(extractedCodePath)) {
+                        throw new IOException("Invalid zip entry: " + entry.getName());
+                    }
+                    if (entry.isDirectory()) {
+                        Files.createDirectories(resolvedPath);
+                    } else {
+                        Files.createDirectories(resolvedPath.getParent());
+                        Files.copy(zis, resolvedPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    }
+                    zis.closeEntry();
+                }
+            }
+            status.addStep("Extract Application Code", "SUCCESS", "Application code extracted successfully");
+
+            // Step 8: Generate repository name using realm, admin username, and client name
+            String repoName = ProvisioningService.generateRepositoryName(realm, adminUsername, clientId);
+            status.addStep("Generate Repository Name", "SUCCESS", "Repository name generated: " + repoName);
+            log.info("📝 Step 8: Generated repository name: {}", repoName);
+
+            // Step 9: Create GitHub Repository
+            status.addStep("Create GitHub Repository", "IN_PROGRESS", "Creating GitHub repository: " + repoName);
+            log.info("🐙 Step 9: Creating GitHub repository '{}'", repoName);
+            provisioningService.createRepo(repoName);
+            status.addStep("Create GitHub Repository", "SUCCESS", "GitHub repository '" + repoName + "' created successfully");
+
+            // Step 10: Upload code to GitHub
+            status.addStep("Upload Code to GitHub", "IN_PROGRESS", "Uploading application code to GitHub");
+            log.info("⬆️ Step 10: Uploading code to GitHub repository");
+            uploadDirectoryToGitHub(extractedCodePath, repoName);
+            status.addStep("Upload Code to GitHub", "SUCCESS", "Code uploaded to GitHub successfully");
+
+            // Step 11: Create Docker Hub Repository
+            String dockerRepoName = dockerHubUsername + "/" + repoName;
+            status.addStep("Create Docker Hub Repository", "IN_PROGRESS", "Creating Docker Hub repository: " + dockerRepoName);
+            log.info("🐳 Step 11: Creating Docker Hub repository '{}'", dockerRepoName);
+            dockerHubService.createRepository(dockerRepoName);
+            status.addStep("Create Docker Hub Repository", "SUCCESS", "Docker Hub repository '" + dockerRepoName + "' created successfully");
+
+            // Step 12: Build Docker Image
+            String dockerImageName = dockerRepoName + ":latest";
+            status.addStep("Build Docker Image", "IN_PROGRESS", "Building Docker image: " + dockerImageName);
+            log.info("🔨 Step 12: Building Docker image '{}'", dockerImageName);
+            boolean buildSuccess = dockerBuildService.buildDockerImage(extractedCodePath, dockerImageName);
+            if (!buildSuccess) {
+                throw new RuntimeException("Docker image build failed");
+            }
+            status.addStep("Build Docker Image", "SUCCESS", "Docker image built successfully");
+
+            // Step 13: Push Docker Image to Docker Hub
+            status.addStep("Push Docker Image", "IN_PROGRESS", "Pushing Docker image to Docker Hub");
+            log.info("📤 Step 13: Pushing Docker image to Docker Hub");
+            boolean pushSuccess = dockerBuildService.pushDockerImage(dockerImageName);
+            if (!pushSuccess) {
+                throw new RuntimeException("Docker image push failed");
+            }
+            status.addStep("Push Docker Image", "SUCCESS", "Docker image pushed to Docker Hub successfully");
+
+            // Cleanup extracted code
+            if (extractedCodePath != null && Files.exists(extractedCodePath)) {
+                try {
+                    Files.walk(extractedCodePath)
+                            .sorted(java.util.Comparator.reverseOrder())
+                            .forEach(path -> {
+                                try {
+                                    Files.delete(path);
+                                } catch (Exception ignored) {
+                                }
+                            });
+                } catch (Exception e) {
+                    log.warn("Failed to cleanup extracted code directory: {}", e.getMessage());
+                }
+            }
+
+            status.setStatus("SUCCESS");
+            status.setMessage("Signup process completed successfully");
+            log.info("🎉 Signup process completed successfully for realm '{}'", realm);
+
+            return status;
 
         } catch (Exception e) {
             log.error("💥 Signup process failed: {}", e.getMessage(), e);
+            status.setStatus("FAILED");
+            status.setMessage("Signup process failed: " + e.getMessage());
+
+            // Mark the last in-progress step as failed
+            if (!status.getSteps().isEmpty()) {
+                SignupStatus.StepStatus lastStep = status.getSteps().get(status.getSteps().size() - 1);
+                if ("IN_PROGRESS".equals(lastStep.getStatus())) {
+                    lastStep.setStatus("FAILED");
+                    lastStep.setError(e.getMessage());
+                }
+            }
+
+            // Cleanup on failure
+            if (extractedCodePath != null && Files.exists(extractedCodePath)) {
+                try {
+                    Files.walk(extractedCodePath)
+                            .sorted(java.util.Comparator.reverseOrder())
+                            .forEach(path -> {
+                                try {
+                                    Files.delete(path);
+                                } catch (Exception ignored) {
+                                }
+                            });
+                } catch (Exception cleanupEx) {
+                    log.warn("Failed to cleanup extracted code directory: {}", cleanupEx.getMessage());
+                }
+            }
+
             throw new RuntimeException("Signup failed: " + e.getMessage(), e);
         }
+    }
 
+    /**
+     * Helper method to upload directory to GitHub (extracted from ProvisioningService for reuse)
+     */
+    private void uploadDirectoryToGitHub(Path root, String repo) throws Exception {
+        java.nio.file.Files.walk(root)
+                .filter(java.nio.file.Files::isRegularFile)
+                .forEach(file -> {
+                    try {
+                        uploadFileToGitHub(root, file, repo);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+    }
 
+    private void uploadFileToGitHub(Path root, Path file, String repo) throws Exception {
+        String path = root.relativize(file).toString().replace("\\", "/");
+        byte[] content = java.nio.file.Files.readAllBytes(file);
+        String base64 = Base64.getEncoder().encodeToString(content);
 
-// After clientService.signup(request, dockerImage);
+        String api = "https://api.github.com/repos/" + provisioningService.getGithubOrg() + "/" + repo + "/contents/" + path;
 
+        HttpURLConnection conn = (HttpURLConnection) new java.net.URL(api).openConnection();
+        conn.setRequestMethod("PUT");
+        conn.setRequestProperty("Authorization", "Bearer " + provisioningService.getGithubToken());
+        conn.setRequestProperty("Accept", "application/vnd.github+json");
+        conn.setRequestProperty("Content-Type", "application/json");
+        conn.setDoOutput(true);
 
-        String repoName = request.getRealmName() + "-" + request.getClientId();
-        try {
-            provisioningService.provision(repoName, sourceZip);
-        } catch (Exception e) {
-            throw new RuntimeException("Provisioning failed: " + e.getMessage(), e);
+        String payload = String.format("""
+                {
+                  "message": "initial commit",
+                  "content": "%s"
+                }
+                """, base64);
+
+        conn.getOutputStream().write(payload.getBytes());
+
+        if (conn.getResponseCode() >= 300) {
+            throw new RuntimeException("File upload failed: " + path);
         }
-
-
-        log.info("🎉 Signup process completed for realm '{}'", realm);
     }
 
 //checking that this work or nto

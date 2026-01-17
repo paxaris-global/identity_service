@@ -259,7 +259,7 @@ public class KeycloakClientController {
 //        }
 //    }
     @PostMapping(value = "/signup", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<String> signup(
+    public ResponseEntity<?> signup(
             @RequestParam("data") String data,
             @RequestParam("dockerImage") MultipartFile sourceZip
     ) {
@@ -267,11 +267,22 @@ public class KeycloakClientController {
             ObjectMapper objectMapper = new ObjectMapper();
             SignupRequest request = objectMapper.readValue(data, SignupRequest.class);
 
-            clientService.signup(request, sourceZip);
-            return ResponseEntity.ok("Signup completed successfully");
+            com.paxaris.identity_service.dto.SignupStatus status = clientService.signup(request, sourceZip);
+            
+            if ("SUCCESS".equals(status.getStatus())) {
+                return ResponseEntity.ok(status);
+            } else {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(status);
+            }
         } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.badRequest().body("Signup failed: " + e.getMessage());
+            logger.error("Signup failed: {}", e.getMessage(), e);
+            com.paxaris.identity_service.dto.SignupStatus errorStatus = com.paxaris.identity_service.dto.SignupStatus.builder()
+                    .status("FAILED")
+                    .message("Signup failed: " + e.getMessage())
+                    .steps(new java.util.ArrayList<>())
+                    .build();
+            errorStatus.addStep("Signup Process", "FAILED", "Signup failed with exception", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorStatus);
         }
     }
 
