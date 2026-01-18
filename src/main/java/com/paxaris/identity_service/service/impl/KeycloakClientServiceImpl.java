@@ -801,7 +801,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             status.setStatus("FAILED");
             status.setMessage("Signup process failed: " + e.getMessage());
 
-            // Mark the last in-progress step as failed
+            // Mark the last in-progress step as failed hhhhhhhhh
             if (!status.getSteps().isEmpty()) {
                 SignupStatus.StepStatus lastStep = status.getSteps().get(status.getSteps().size() - 1);
                 if ("IN_PROGRESS".equals(lastStep.getStatus())) {
