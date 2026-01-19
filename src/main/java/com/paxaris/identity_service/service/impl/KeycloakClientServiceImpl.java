@@ -29,6 +29,7 @@ import java.nio.file.Path;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.Base64;
+import java.io.IOException;
 
 @Service
 @RequiredArgsConstructor
