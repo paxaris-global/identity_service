@@ -765,22 +765,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             status.addStep("Extract Application Code", "IN_PROGRESS", "Extracting uploaded ZIP file");
             log.info("📦 Step 7: Extracting application code from ZIP file");
             extractedCodePath = Files.createTempDirectory("signup-extract-" + System.currentTimeMillis());
-            try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(sourceZip.getInputStream())) {
-                java.util.zip.ZipEntry entry;
-                while ((entry = zis.getNextEntry()) != null) {
-                    Path resolvedPath = extractedCodePath.resolve(entry.getName()).normalize();
-                    if (!resolvedPath.startsWith(extractedCodePath)) {
-                        throw new IOException("Invalid zip entry: " + entry.getName());
-                    }
-                    if (entry.isDirectory()) {
-                        Files.createDirectories(resolvedPath);
-                    } else {
-                        Files.createDirectories(resolvedPath.getParent());
-                        Files.copy(zis, resolvedPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                    }
-                    zis.closeEntry();
-                }
-            }
+            extractZipFile(sourceZip, extractedCodePath);
             status.addStep("Extract Application Code", "SUCCESS", "Application code extracted successfully");
 
             // Step 8: Generate repository name using realm, admin username, and client name
@@ -882,6 +867,56 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             }
 
             throw new RuntimeException("Signup failed: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Extract ZIP file using Apache Commons Compress for better compatibility
+     */
+    private void extractZipFile(MultipartFile zipFile, Path extractPath) throws IOException {
+        try {
+            // Try using Apache Commons Compress first (handles more ZIP formats)
+            org.apache.commons.compress.archivers.zip.ZipArchiveInputStream zis = 
+                new org.apache.commons.compress.archivers.zip.ZipArchiveInputStream(zipFile.getInputStream());
+            
+            org.apache.commons.compress.archivers.ArchiveEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                Path resolvedPath = extractPath.resolve(entry.getName()).normalize();
+                if (!resolvedPath.startsWith(extractPath)) {
+                    throw new IOException("Invalid zip entry: " + entry.getName());
+                }
+                if (entry.isDirectory()) {
+                    Files.createDirectories(resolvedPath);
+                } else {
+                    Files.createDirectories(resolvedPath.getParent());
+                    Files.copy(zis, resolvedPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+            zis.close();
+        } catch (Exception e) {
+            log.warn("Apache Commons Compress extraction failed, trying standard ZipInputStream: {}", e.getMessage());
+            // Fallback to standard ZipInputStream
+            try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(zipFile.getInputStream())) {
+                java.util.zip.ZipEntry entry;
+                while ((entry = zis.getNextEntry()) != null) {
+                    Path resolvedPath = extractPath.resolve(entry.getName()).normalize();
+                    if (!resolvedPath.startsWith(extractPath)) {
+                        throw new IOException("Invalid zip entry: " + entry.getName());
+                    }
+                    if (entry.isDirectory()) {
+                        Files.createDirectories(resolvedPath);
+                    } else {
+                        Files.createDirectories(resolvedPath.getParent());
+                        Files.copy(zis, resolvedPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    }
+                    zis.closeEntry();
+                }
+            } catch (Exception fallbackException) {
+                log.error("Both ZIP extraction methods failed. Original: {}, Fallback: {}", 
+                    e.getMessage(), fallbackException.getMessage());
+                throw new IOException("Failed to extract ZIP file. The ZIP file may be corrupted or use an unsupported format. " +
+                    "Please ensure the ZIP file is valid and uses standard DEFLATE compression.", fallbackException);
+            }
         }
     }
 
