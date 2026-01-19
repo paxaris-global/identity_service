@@ -253,6 +253,13 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
     @Override
     public void createRealm(String realmName, String token) {
         log.info("Attempting to create realm: {}", realmName);
+        
+        // Check if realm already exists
+        if (realmExists(realmName, token)) {
+            log.warn("Realm '{}' already exists, skipping creation", realmName);
+            return;
+        }
+        
         String url = config.getBaseUrl() + "/admin/realms";
         log.debug("Create realm URL: {}", url);
         Map<String, Object> body = Map.of("realm", realmName, "enabled", true);
@@ -263,9 +270,36 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         try {
             restTemplate.postForEntity(url, new HttpEntity<>(body, headers), String.class);
             log.info("Realm '{}' created successfully.", realmName);
+        } catch (HttpClientErrorException e) {
+            // Check if error is because realm already exists
+            if (e.getStatusCode().value() == 400 && e.getResponseBodyAsString() != null 
+                    && e.getResponseBodyAsString().contains("already exists")) {
+                log.warn("Realm '{}' already exists (detected from error response), skipping creation", realmName);
+                return;
+            }
+            log.error("Failed to create realm '{}': {}", realmName, e.getMessage(), e);
+            throw new RuntimeException("Failed to create realm: " + e.getMessage(), e);
         } catch (Exception e) {
             log.error("Failed to create realm '{}': {}", realmName, e.getMessage(), e);
             throw new RuntimeException("Failed to create realm: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Check if a realm exists in Keycloak
+     */
+    private boolean realmExists(String realmName, String token) {
+        try {
+            String url = config.getBaseUrl() + "/admin/realms/" + realmName;
+            HttpHeaders headers = new HttpHeaders();
+            headers.setBearerAuth(token);
+            HttpEntity<Void> entity = new HttpEntity<>(headers);
+            
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
+            return response.getStatusCode().is2xxSuccessful();
+        } catch (Exception e) {
+            log.debug("Realm '{}' does not exist or is not accessible: {}", realmName, e.getMessage());
+            return false;
         }
     }
 
