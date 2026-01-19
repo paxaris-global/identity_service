@@ -619,6 +619,11 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
     // ---------------- SIGNUP ----------------
     @Override
     public SignupStatus signup(SignupRequest request, MultipartFile sourceZip) {
+        // Validate required inputs first
+        if (request == null) {
+            throw new IllegalArgumentException("SignupRequest cannot be null");
+        }
+
         SignupStatus status = SignupStatus.builder()
                 .status("IN_PROGRESS")
                 .message("Signup process started")
@@ -627,11 +632,17 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
         log.info("🚀 Starting comprehensive signup process for product '{}', realm '{}'",
                 request.getClientId(), request.getRealmName());
+        if (sourceZip == null || sourceZip.isEmpty()) {
+            throw new IllegalArgumentException("Source ZIP file is required");
+        }
+        if (request.getAdminUser() == null) {
+            throw new IllegalArgumentException("Admin user information is required");
+        }
 
         String masterToken = null;
         String realm = request.getRealmName() != null ? request.getRealmName() : "default-realm";
         String clientId = request.getClientId() != null ? request.getClientId() : "default-client";
-        String adminUsername = request.getAdminUser() != null ? request.getAdminUser().getUsername() : "admin";
+        String adminUsername = request.getAdminUser().getUsername() != null ? request.getAdminUser().getUsername() : "admin";
         Path extractedCodePath = null;
 
         try {
@@ -697,18 +708,24 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             roleRequest.setRoleName("admin");
             roleRequest.setUrls(List.of(urlEntry));
 
-            WebClient webClient = WebClient.builder()
-                    .baseUrl(projectManagementBaseUrl)
-                    .build();
+            if (projectManagementBaseUrl == null || projectManagementBaseUrl.isEmpty()) {
+                log.warn("Project Management Base URL is not configured, skipping project manager update");
+                status.addStep("Update Project Manager", "SKIPPED", "Project Management Base URL not configured");
+            } else {
+                WebClient webClient = WebClient.builder()
+                        .baseUrl(projectManagementBaseUrl)
+                        .build();
 
-            webClient.post()
-                    .uri("/project/roles/save-or-update")
-                    .bodyValue(roleRequest)
-                    .retrieve()
-                    .toBodilessEntity()
-                    .block();
+                webClient.post()
+                        .uri("/project/roles/save-or-update")
+                        .bodyValue(roleRequest)
+                        .retrieve()
+                        .toBodilessEntity()
+                        .block();
 
-            status.addStep("Update Project Manager", "SUCCESS", "Project info sent to Project Management Service");
+                status.addStep("Update Project Manager", "SUCCESS", "Project info sent to Project Management Service");
+            }
+
 
             // Step 7: Extract ZIP file
             status.addStep("Extract Application Code", "IN_PROGRESS", "Extracting uploaded ZIP file");
@@ -750,6 +767,9 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             status.addStep("Upload Code to GitHub", "SUCCESS", "Code uploaded to GitHub successfully");
 
             // Step 11: Create Docker Hub Repository
+            if (dockerHubUsername == null || dockerHubUsername.isEmpty()) {
+                throw new IllegalStateException("Docker Hub username is not configured");
+            }
             String dockerRepoName = dockerHubUsername + "/" + repoName;
             status.addStep("Create Docker Hub Repository", "IN_PROGRESS", "Creating Docker Hub repository: " + dockerRepoName);
             log.info("🐳 Step 11: Creating Docker Hub repository '{}'", dockerRepoName);
@@ -802,7 +822,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             status.setStatus("FAILED");
             status.setMessage("Signup process failed: " + e.getMessage());
 
-            // Mark the last in-progress step as failed hhhhh
+            // Mark the last in-progress step as failed
             if (!status.getSteps().isEmpty()) {
                 SignupStatus.StepStatus lastStep = status.getSteps().get(status.getSteps().size() - 1);
                 if ("IN_PROGRESS".equals(lastStep.getStatus())) {
@@ -811,7 +831,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
                 }
             }
 
-            // Cleanup on failuressss
+            // Cleanup on failure
             if (extractedCodePath != null && Files.exists(extractedCodePath)) {
                 try {
                     Files.walk(extractedCodePath)
@@ -873,8 +893,6 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             throw new RuntimeException("File upload failed: " + path);
         }
     }
-
-//checking that this work or nto
 
     // ---------------- UTILITY ----------------
     private String resolveUserId(String realm, String username, String token) {

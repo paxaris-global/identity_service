@@ -26,6 +26,7 @@ public class DockerBuildService {
     }
 
     /**
+     * 
      * Builds a Docker image from the source code directory
      * @param sourceCodePath Path to the extracted source code
      * @param imageName Full Docker image name (e.g., "username/repo-name:tag")
