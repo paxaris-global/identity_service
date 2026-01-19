@@ -810,7 +810,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
                 }
             }
 
-            // Cleanup on failuress
+            // Cleanup on failuressss
             if (extractedCodePath != null && Files.exists(extractedCodePath)) {
                 try {
                     Files.walk(extractedCodePath)
