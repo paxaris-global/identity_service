@@ -64,6 +64,13 @@ public class ProvisioningService {
     // CREATE GITHUB REPO
     // --------------------------------------------------
     public void createRepo(String repoName) throws IOException {
+        // Validate GitHub configuration
+        if (githubToken == null || githubToken.isEmpty()) {
+            throw new IllegalStateException("GitHub token is not configured. Please set GITHUB_TOKEN environment variable.");
+        }
+        if (githubOrg == null || githubOrg.isEmpty()) {
+            throw new IllegalStateException("GitHub organization is not configured. Please set GITHUB_ORG environment variable.");
+        }
 
         String apiUrl = "https://api.github.com/orgs/" + githubOrg + "/repos";
 
@@ -89,7 +96,40 @@ public class ProvisioningService {
         int responseCode = conn.getResponseCode();
 
         if (responseCode != 201) {
-            throw new RuntimeException("GitHub org repo creation failed. HTTP " + responseCode);
+            // Read error response for better error message
+            String errorMessage = "GitHub org repo creation failed. HTTP " + responseCode;
+            try {
+                java.io.BufferedReader reader = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(
+                        responseCode >= 400 ? conn.getErrorStream() : conn.getInputStream()
+                    )
+                );
+                StringBuilder response = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    response.append(line);
+                }
+                if (response.length() > 0) {
+                    errorMessage += " - " + response.toString();
+                }
+            } catch (Exception e) {
+                // Ignore error reading response
+            }
+            
+            // Provide specific error messages based on status code
+            if (responseCode == 401) {
+                errorMessage = "GitHub authentication failed (401). Please check that your GITHUB_TOKEN is valid and has not expired. " +
+                             "The token needs 'repo' and 'admin:org' permissions for organization repositories.";
+            } else if (responseCode == 403) {
+                errorMessage = "GitHub access forbidden (403). The token may not have sufficient permissions. " +
+                             "Required permissions: 'repo' (full control) and 'admin:org' (write) for organization repositories.";
+            } else if (responseCode == 404) {
+                errorMessage = "GitHub organization '" + githubOrg + "' not found (404). Please verify the GITHUB_ORG configuration.";
+            } else if (responseCode == 422) {
+                errorMessage = "GitHub repository creation failed (422). The repository name may already exist or be invalid.";
+            }
+            
+            throw new RuntimeException(errorMessage);
         }
     }
 
