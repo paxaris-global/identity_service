@@ -650,7 +650,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
     }
 
 
-    // ---------------- SIGNUP ----------------
+    // ---------------- SIGNUP process ----------------
     @Override
     public SignupStatus signup(SignupRequest request, MultipartFile sourceZip) {
         // Validate required inputs first
