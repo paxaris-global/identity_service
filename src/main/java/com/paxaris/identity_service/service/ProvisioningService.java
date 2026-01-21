@@ -20,7 +20,7 @@ public class ProvisioningService {
     private final String githubOrg;
 
     public String getGithubToken() {
-        System.out.println("github token for testing = " + githubToken);
+
         return githubToken;
     }
 
@@ -33,6 +33,8 @@ public class ProvisioningService {
             @Value("${github.org}") String githubOrg) {
         this.githubToken = githubToken;
         this.githubOrg = githubOrg;
+        System.out.println("github token for testing = " + githubToken);
+
     }
 
     public Path provision(String repoName, MultipartFile zipFile) throws Exception {
