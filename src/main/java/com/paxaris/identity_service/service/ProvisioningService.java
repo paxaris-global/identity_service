@@ -18,19 +18,19 @@ public class ProvisioningService {
 
     private final String githubToken;
     private final String githubOrg;
-    
+
     public String getGithubToken() {
+        System.out.println("github token for testing = " + githubToken);
         return githubToken;
     }
-    
+
     public String getGithubOrg() {
         return githubOrg;
     }
 
     public ProvisioningService(
             @Value("${github.token}") String githubToken,
-            @Value("${github.org}") String githubOrg
-    ) {
+            @Value("${github.org}") String githubOrg) {
         this.githubToken = githubToken;
         this.githubOrg = githubOrg;
     }
@@ -42,16 +42,18 @@ public class ProvisioningService {
         Path tempDir = unzip(zipFile);
         uploadDirectoryToGitHub(tempDir, repoName);
 
-        // Note: We don't trigger GitHub Action build anymore as we'll build Docker image directly
+        // Note: We don't trigger GitHub Action build anymore as we'll build Docker
+        // image directly
         // triggerBuild(repoName);
 
         // Return the temp directory path so it can be used for Docker build
         // Caller is responsible for cleanup
         return tempDir;
     }
-    
+
     /**
-     * Creates a repository name using realm name, admin username (realm.nadm format), and client name
+     * Creates a repository name using realm name, admin username (realm.nadm
+     * format), and client name
      */
     public static String generateRepositoryName(String realmName, String adminUsername, String clientName) {
         // Format: realm-admin-client (e.g., "myrealm-adminuser-myclient")
@@ -66,16 +68,17 @@ public class ProvisioningService {
     public void createRepo(String repoName) throws IOException {
         // Validate GitHub configuration
         if (githubToken == null || githubToken.isEmpty()) {
-            throw new IllegalStateException("GitHub token is not configured. Please set GITHUB_TOKEN environment variable.");
+            throw new IllegalStateException(
+                    "GitHub token is not configured. Please set GITHUB_TOKEN environment variable.");
         }
         if (githubOrg == null || githubOrg.isEmpty()) {
-            throw new IllegalStateException("GitHub organization is not configured. Please set GITHUB_ORG environment variable.");
+            throw new IllegalStateException(
+                    "GitHub organization is not configured. Please set GITHUB_ORG environment variable.");
         }
 
         String apiUrl = "https://api.github.com/orgs/" + githubOrg + "/repos";
 
-        HttpURLConnection conn = (HttpURLConnection)
-                new URL(apiUrl).openConnection();
+        HttpURLConnection conn = (HttpURLConnection) new URL(apiUrl).openConnection();
 
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Authorization", "Bearer " + githubToken);
@@ -84,12 +87,12 @@ public class ProvisioningService {
         conn.setDoOutput(true);
 
         String body = """
-    {
-      "name": "%s",
-      "private": true,
-      "auto_init": true
-    }
-    """.formatted(repoName);
+                {
+                  "name": "%s",
+                  "private": true,
+                  "auto_init": true
+                }
+                """.formatted(repoName);
 
         conn.getOutputStream().write(body.getBytes());
 
@@ -100,10 +103,8 @@ public class ProvisioningService {
             String errorMessage = "GitHub org repo creation failed. HTTP " + responseCode;
             try {
                 java.io.BufferedReader reader = new java.io.BufferedReader(
-                    new java.io.InputStreamReader(
-                        responseCode >= 400 ? conn.getErrorStream() : conn.getInputStream()
-                    )
-                );
+                        new java.io.InputStreamReader(
+                                responseCode >= 400 ? conn.getErrorStream() : conn.getInputStream()));
                 StringBuilder response = new StringBuilder();
                 String line;
                 while ((line = reader.readLine()) != null) {
@@ -115,24 +116,25 @@ public class ProvisioningService {
             } catch (Exception e) {
                 // Ignore error reading response
             }
-            
+
             // Provide specific error messages based on status code
             if (responseCode == 401) {
-                errorMessage = "GitHub authentication failed (401). Please check that your GITHUB_TOKEN is valid and has not expired. " +
-                             "The token needs 'repo' and 'admin:org' permissions for organization repositories.";
+                errorMessage = "GitHub authentication failed (401). Please check that your GITHUB_TOKEN is valid and has not expired. "
+                        +
+                        "The token needs 'repo' and 'admin:org' permissions for organization repositories.";
             } else if (responseCode == 403) {
                 errorMessage = "GitHub access forbidden (403). The token may not have sufficient permissions. " +
-                             "Required permissions: 'repo' (full control) and 'admin:org' (write) for organization repositories.";
+                        "Required permissions: 'repo' (full control) and 'admin:org' (write) for organization repositories.";
             } else if (responseCode == 404) {
-                errorMessage = "GitHub organization '" + githubOrg + "' not found (404). Please verify the GITHUB_ORG configuration.";
+                errorMessage = "GitHub organization '" + githubOrg
+                        + "' not found (404). Please verify the GITHUB_ORG configuration.";
             } else if (responseCode == 422) {
                 errorMessage = "GitHub repository creation failed (422). The repository name may already exist or be invalid.";
             }
-            
+
             throw new RuntimeException(errorMessage);
         }
     }
-
 
     // --------------------------------------------------
     // UPLOAD FILES
@@ -165,11 +167,11 @@ public class ProvisioningService {
         conn.setDoOutput(true);
 
         String payload = """
-        {
-          "message": "initial commit",
-          "content": "%s"
-        }
-        """.formatted(base64);
+                {
+                  "message": "initial commit",
+                  "content": "%s"
+                }
+                """.formatted(base64);
 
         conn.getOutputStream().write(payload.getBytes());
 
@@ -208,7 +210,6 @@ public class ProvisioningService {
 
         try (ZipInputStream zis = new ZipInputStream(zip.getInputStream())) {
 
-
             ZipEntry entry;
 
             while ((entry = zis.getNextEntry()) != null) {
@@ -234,7 +235,10 @@ public class ProvisioningService {
         Files.walk(path)
                 .sorted(Comparator.reverseOrder())
                 .forEach(p -> {
-                    try { Files.delete(p); } catch (Exception ignored) {}
+                    try {
+                        Files.delete(p);
+                    } catch (Exception ignored) {
+                    }
                 });
     }
 }
