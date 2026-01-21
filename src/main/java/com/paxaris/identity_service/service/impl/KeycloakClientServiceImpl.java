@@ -22,7 +22,6 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.reactive.function.client.WebClient;
 
-
 import java.util.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -75,7 +74,9 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             log.info("Successfully obtained master token.");
             return (String) response.getBody().get("access_token");
         } catch (HttpClientErrorException.Unauthorized e) {
-            log.error("401 Unauthorized: Keycloak master admin credentials or client-id is incorrect. Please check your configuration. Username: {}, Client-ID: {}", config.getAdminUsername(), "admin-cli");
+            log.error(
+                    "401 Unauthorized: Keycloak master admin credentials or client-id is incorrect. Please check your configuration. Username: {}, Client-ID: {}",
+                    config.getAdminUsername(), "admin-cli");
             throw new RuntimeException("Authentication failed for master token.", e);
         } catch (Exception e) {
             log.error("Failed to get master token due to an error: {}", e.getMessage(), e);
@@ -83,13 +84,12 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         }
     }
 
-
     @Override
     public Map<String, Object> getRealmToken(String realm,
-                                             String username,
-                                             String password,
-                                             String clientId,
-                                             String clientSecret) {
+            String username,
+            String password,
+            String clientId,
+            String clientSecret) {
 
         String tokenUrl = config.getBaseUrl() + "/realms/" + realm + "/protocol/openid-connect/token";
 
@@ -119,7 +119,6 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             throw new RuntimeException("Login failed: " + e.getResponseBodyAsString(), e);
         }
     }
-
 
     @Override
     public Map<String, Object> getMyRealmToken(String username, String password, String clientId, String realm) {
@@ -158,11 +157,11 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(formData, headers);
 
             // 4️⃣ Request user access token
-            ResponseEntity<String> response =
-                    restTemplate.exchange(tokenUrl, HttpMethod.POST, request, String.class);
+            ResponseEntity<String> response = restTemplate.exchange(tokenUrl, HttpMethod.POST, request, String.class);
 
             // 5️⃣ Return parsed token JSON
-            return objectMapper.readValue(response.getBody(), new TypeReference<>() {});
+            return objectMapper.readValue(response.getBody(), new TypeReference<>() {
+            });
 
         } catch (Exception e) {
             log.error("💥 Failed to get realm token for user '{}': {}", username, e.getMessage(), e);
@@ -188,8 +187,8 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
                     clientsUrl,
                     HttpMethod.GET,
                     request,
-                    new ParameterizedTypeReference<>() {}
-            );
+                    new ParameterizedTypeReference<>() {
+                    });
 
             List<Map<String, Object>> clients = clientsResponse.getBody();
             if (clients == null || clients.isEmpty()) {
@@ -200,13 +199,14 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             log.info("Found internal client ID: {}", internalClientId);
 
             // Step 3: Get the secret for this client
-            String secretUrl = config.getBaseUrl() + "/admin/realms/" + realm + "/clients/" + internalClientId + "/client-secret";
+            String secretUrl = config.getBaseUrl() + "/admin/realms/" + realm + "/clients/" + internalClientId
+                    + "/client-secret";
             ResponseEntity<Map<String, Object>> secretResponse = restTemplate.exchange(
                     secretUrl,
                     HttpMethod.GET,
                     request,
-                    new ParameterizedTypeReference<>() {}
-            );
+                    new ParameterizedTypeReference<>() {
+                    });
 
             Map<String, Object> secretBody = secretResponse.getBody();
             if (secretBody == null || secretBody.get("value") == null) {
@@ -223,8 +223,6 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         }
     }
 
-
-
     @Override
     public boolean validateToken(String realm, String token) {
         log.info("Attempting to validate token for realm '{}'", realm);
@@ -234,8 +232,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             HttpHeaders headers = new HttpHeaders();
             headers.setBearerAuth(token);
             ResponseEntity<Map> response = restTemplate.exchange(
-                    userInfoUrl, HttpMethod.GET, new HttpEntity<>(headers), Map.class
-            );
+                    userInfoUrl, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
             boolean isValid = response.getStatusCode().is2xxSuccessful() && response.getBody() != null;
             if (isValid) {
                 log.info("Token for realm '{}' is valid.", realm);
@@ -253,13 +250,13 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
     @Override
     public void createRealm(String realmName, String token) {
         log.info("Attempting to create realm: {}", realmName);
-        
+
         // Check if realm already exists
         if (realmExists(realmName, token)) {
             log.warn("Realm '{}' already exists, skipping creation", realmName);
             return;
         }
-        
+
         String url = config.getBaseUrl() + "/admin/realms";
         log.debug("Create realm URL: {}", url);
         Map<String, Object> body = Map.of("realm", realmName, "enabled", true);
@@ -272,7 +269,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             log.info("Realm '{}' created successfully.", realmName);
         } catch (HttpClientErrorException e) {
             // Check if error is because realm already exists
-            if (e.getStatusCode().value() == 400 && e.getResponseBodyAsString() != null 
+            if (e.getStatusCode().value() == 400 && e.getResponseBodyAsString() != null
                     && e.getResponseBodyAsString().contains("already exists")) {
                 log.warn("Realm '{}' already exists (detected from error response), skipping creation", realmName);
                 return;
@@ -284,7 +281,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             throw new RuntimeException("Failed to create realm: " + e.getMessage(), e);
         }
     }
-    
+
     /**
      * Check if a realm exists in Keycloak
      */
@@ -294,7 +291,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             HttpHeaders headers = new HttpHeaders();
             headers.setBearerAuth(token);
             HttpEntity<Void> entity = new HttpEntity<>(headers);
-            
+
             ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
             return response.getStatusCode().is2xxSuccessful();
         } catch (Exception e) {
@@ -314,7 +311,8 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         try {
             ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
             log.info("Successfully fetched all realms.");
-            return objectMapper.readValue(response.getBody(), new TypeReference<>() {});
+            return objectMapper.readValue(response.getBody(), new TypeReference<>() {
+            });
         } catch (Exception e) {
             log.error("Failed to fetch realms: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to fetch realms", e);
@@ -364,8 +362,6 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         return getClientUUID(realm, clientId, token);
     }
 
-
-
     @Override
     public List<Map<String, Object>> getAllClients(String realm, String token) {
         log.info("Attempting to fetch all clients for realm '{}'", realm);
@@ -374,9 +370,11 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         headers.setBearerAuth(token);
 
         try {
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), String.class);
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers),
+                    String.class);
             log.info("Successfully fetched all clients for realm '{}'.", realm);
-            return objectMapper.readValue(response.getBody(), new TypeReference<>() {});
+            return objectMapper.readValue(response.getBody(), new TypeReference<>() {
+            });
         } catch (Exception e) {
             log.error("Failed to fetch clients for realm '{}': {}", realm, e.getMessage(), e);
             throw new RuntimeException("Failed to fetch clients", e);
@@ -393,7 +391,8 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
         try {
             ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
-            Map<String, Object> map = objectMapper.readValue(response.getBody(), new TypeReference<>() {});
+            Map<String, Object> map = objectMapper.readValue(response.getBody(), new TypeReference<>() {
+            });
             log.info("Successfully fetched client secret for client '{}'.", clientId);
             return (String) map.get("value");
         } catch (Exception e) {
@@ -414,8 +413,8 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
         ResponseEntity<List<Map<String, Object>>> response = restTemplate.exchange(
                 url, HttpMethod.GET, new HttpEntity<>(headers),
-                new ParameterizedTypeReference<>() {}
-        );
+                new ParameterizedTypeReference<>() {
+                });
         if (response.getBody() != null && !response.getBody().isEmpty()) {
             String uuid = (String) response.getBody().get(0).get("id");
             log.info("Found UUID for client '{}': {}", clientName, uuid);
@@ -431,7 +430,6 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         return getClientUUID(realm, clientName, token);
     }
 
-
     // ---------------- USER5 ----------------
     @Override
     public String createUser(String realm, String token, Map<String, Object> userPayload) {
@@ -441,10 +439,11 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         String url = config.getBaseUrl() + "/admin/realms/" + realm + "/users";
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(token);  // <-- use provided token
+        headers.setBearerAuth(token); // <-- use provided token
 
         try {
-            ResponseEntity<Void> response = restTemplate.postForEntity(url, new HttpEntity<>(userPayload, headers), Void.class);
+            ResponseEntity<Void> response = restTemplate.postForEntity(url, new HttpEntity<>(userPayload, headers),
+                    Void.class);
 
             if (response.getStatusCode() == HttpStatus.CREATED) {
                 String location = response.getHeaders().getFirst("Location");
@@ -464,7 +463,6 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         }
     }
 
-
     @Override
     public List<Map<String, Object>> getAllUsers(String realm, String token) {
         log.info("Attempting to fetch all users for realm '{}'", realm);
@@ -473,9 +471,11 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         headers.setBearerAuth(token);
 
         try {
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), String.class);
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers),
+                    String.class);
             log.info("Successfully fetched all users for realm '{}'.", realm);
-            return objectMapper.readValue(response.getBody(), new TypeReference<>() {});
+            return objectMapper.readValue(response.getBody(), new TypeReference<>() {
+            });
         } catch (Exception e) {
             log.error("Failed to fetch users for realm '{}': {}", realm, e.getMessage(), e);
             throw new RuntimeException("Failed to fetch users", e);
@@ -484,8 +484,10 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
     // ---------------- ROLE ----------------
     @Override
-    public void createClientRoles(String realm, String clientName, List<RoleCreationRequest> roleRequests, String token) {
-        log.info("Attempting to create {} client roles for client '{}' in realm '{}'", roleRequests.size(), clientName, realm);
+    public void createClientRoles(String realm, String clientName, List<RoleCreationRequest> roleRequests,
+            String token) {
+        log.info("Attempting to create {} client roles for client '{}' in realm '{}'", roleRequests.size(), clientName,
+                realm);
         String clientUUID = getClientUUID(realm, clientName, token);
         log.info("Client UUID for '{}' is '{}'", clientName, clientUUID);
 
@@ -499,8 +501,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         for (RoleCreationRequest role : roleRequests) {
             Map<String, Object> body = Map.of(
                     "name", role.getName(),
-                    "description", role.getDescription()
-            );
+                    "description", role.getDescription());
             try {
                 restTemplate.postForEntity(url, new HttpEntity<>(body, headers), String.class);
                 log.info("Role '{}' created successfully.", role.getName());
@@ -514,7 +515,6 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             throw new RuntimeException("Failed to create roles: " + String.join(", ", failedRoles));
         }
     }
-
 
     @Override
     public void createRealmRole(String realm, String roleName, String clientId, String token) {
@@ -535,7 +535,8 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
     @Override
     public boolean createRole(String realm, String clientUUID, RoleCreationRequest role, String token) {
-        log.info("Attempting to create role '{}' for client with UUID '{}' in realm '{}'", role.getName(), clientUUID, realm);
+        log.info("Attempting to create role '{}' for client with UUID '{}' in realm '{}'", role.getName(), clientUUID,
+                realm);
         try {
             String url = config.getBaseUrl() + "/admin/realms/" + realm + "/clients/" + clientUUID + "/roles";
             HttpHeaders headers = new HttpHeaders();
@@ -544,8 +545,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
             Map<String, Object> body = Map.of(
                     "name", role.getName(),
-                    "description", role.getDescription()
-            );
+                    "description", role.getDescription());
 
             restTemplate.postForEntity(url, new HttpEntity<>(body, headers), String.class);
             log.info("Role '{}' created successfully.", role.getName());
@@ -557,18 +557,19 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
     }
 
     @Override
-    public boolean updateRole(String realm, String clientUUID, String roleName, RoleCreationRequest role, String token) {
+    public boolean updateRole(String realm, String clientUUID, String roleName, RoleCreationRequest role,
+            String token) {
         log.info("Attempting to update role '{}' for client with UUID '{}' in realm '{}'", roleName, clientUUID, realm);
         try {
-            String url = config.getBaseUrl() + "/admin/realms/" + realm + "/clients/" + clientUUID + "/roles/" + roleName;
+            String url = config.getBaseUrl() + "/admin/realms/" + realm + "/clients/" + clientUUID + "/roles/"
+                    + roleName;
             HttpHeaders headers = new HttpHeaders();
             headers.setBearerAuth(token);
             headers.setContentType(MediaType.APPLICATION_JSON);
 
             Map<String, Object> body = Map.of(
                     "name", role.getName(),
-                    "description", role.getDescription()
-            );
+                    "description", role.getDescription());
 
             restTemplate.put(url, new HttpEntity<>(body, headers));
             log.info("Role '{}' updated successfully.", roleName);
@@ -583,7 +584,8 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
     public boolean deleteRole(String realm, String clientUUID, String roleName, String token) {
         log.info("Attempting to delete role '{}' for client with UUID '{}' in realm '{}'", roleName, clientUUID, realm);
         try {
-            String url = config.getBaseUrl() + "/admin/realms/" + realm + "/clients/" + clientUUID + "/roles/" + roleName;
+            String url = config.getBaseUrl() + "/admin/realms/" + realm + "/clients/" + clientUUID + "/roles/"
+                    + roleName;
             HttpHeaders headers = new HttpHeaders();
             headers.setBearerAuth(token);
 
@@ -605,9 +607,11 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         headers.setBearerAuth(token);
 
         try {
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), String.class);
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers),
+                    String.class);
             log.info("Successfully fetched all roles for client '{}'.", clientId);
-            return objectMapper.readValue(response.getBody(), new TypeReference<>() {});
+            return objectMapper.readValue(response.getBody(), new TypeReference<>() {
+            });
         } catch (Exception e) {
             log.error("Failed to fetch roles for client '{}': {}", clientId, e.getMessage(), e);
             throw new RuntimeException("Failed to fetch roles", e);
@@ -627,8 +631,10 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
     }
 
     @Override
-    public void assignClientRoleToUser(String realm, String userId, String clientUUID, String roleId, String roleName, String token) {
-        String url = config.getBaseUrl() + "/admin/realms/" + realm + "/users/" + userId + "/role-mappings/clients/" + clientUUID;
+    public void assignClientRoleToUser(String realm, String userId, String clientUUID, String roleId, String roleName,
+            String token) {
+        String url = config.getBaseUrl() + "/admin/realms/" + realm + "/users/" + userId + "/role-mappings/clients/"
+                + clientUUID;
 
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
@@ -637,8 +643,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         // Prepare role payload
         List<Map<String, Object>> roles = List.of(Map.of(
                 "id", roleId,
-                "name", roleName
-        ));
+                "name", roleName));
 
         try {
             restTemplate.postForEntity(url, new HttpEntity<>(roles, headers), String.class);
@@ -649,8 +654,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         }
     }
 
-
-    // ---------------- SIGNUP process ----------------
+    // ---------------- SIGNUP ----------------
     @Override
     public SignupStatus signup(SignupRequest request, MultipartFile sourceZip) {
         // Validate required inputs first
@@ -676,7 +680,8 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         String masterToken = null;
         String realm = request.getRealmName() != null ? request.getRealmName() : "default-realm";
         String clientId = request.getClientId() != null ? request.getClientId() : "default-client";
-        String adminUsername = request.getAdminUser().getUsername() != null ? request.getAdminUser().getUsername() : "admin";
+        String adminUsername = request.getAdminUser().getUsername() != null ? request.getAdminUser().getUsername()
+                : "admin";
         Path extractedCodePath = null;
 
         try {
@@ -696,7 +701,8 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             status.addStep("Create Client", "IN_PROGRESS", "Creating Keycloak client: " + clientId);
             log.info("🧩 Step 3: Creating client '{}'", clientId);
             String clientUUID = createClient(realm, clientId, request.isPublicClient(), masterToken);
-            status.addStep("Create Client", "SUCCESS", "Client '" + clientId + "' created successfully with UUID: " + clientUUID);
+            status.addStep("Create Client", "SUCCESS",
+                    "Client '" + clientId + "' created successfully with UUID: " + clientUUID);
 
             // Step 4: Create Admin User
             status.addStep("Create Admin User", "IN_PROGRESS", "Creating admin user: " + adminUsername);
@@ -712,8 +718,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             Map<String, Object> credentials = Map.of(
                     "type", "password",
                     "value", request.getAdminUser().getPassword(),
-                    "temporary", false
-            );
+                    "temporary", false);
             userMap.put("credentials", List.of(credentials));
 
             String userId = createUser(realm, masterToken, userMap);
@@ -722,14 +727,16 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             // Step 5: Assign default roles
             status.addStep("Assign Admin Roles", "IN_PROGRESS", "Assigning default admin roles");
             log.info("🔑 Step 5: Assigning default admin roles to '{}'", adminUsername);
-            List<String> defaultRoles = List.of("create-client", "impersonation", "manage-realm", "manage-users", "manage-clients");
+            List<String> defaultRoles = List.of("create-client", "impersonation", "manage-realm", "manage-users",
+                    "manage-clients");
             for (String role : defaultRoles) {
                 assignRealmManagementRoleToUser(realm, userId, role, masterToken);
             }
             status.addStep("Assign Admin Roles", "SUCCESS", "Default admin roles assigned successfully");
 
             // Step 6: Send data to Project Management Service
-            status.addStep("Update Project Manager", "IN_PROGRESS", "Sending project info to Project Management Service");
+            status.addStep("Update Project Manager", "IN_PROGRESS",
+                    "Sending project info to Project Management Service");
             log.info("📤 Step 6: Sending project info to Project Management Service...");
 
             UrlEntry urlEntry = new UrlEntry();
@@ -760,7 +767,6 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
                 status.addStep("Update Project Manager", "SUCCESS", "Project info sent to Project Management Service");
             }
 
-
             // Step 7: Extract ZIP file
             status.addStep("Extract Application Code", "IN_PROGRESS", "Extracting uploaded ZIP file");
             log.info("📦 Step 7: Extracting application code from ZIP file");
@@ -777,7 +783,8 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             status.addStep("Create GitHub Repository", "IN_PROGRESS", "Creating GitHub repository: " + repoName);
             log.info("🐙 Step 9: Creating GitHub repository '{}'", repoName);
             provisioningService.createRepo(repoName);
-            status.addStep("Create GitHub Repository", "SUCCESS", "GitHub repository '" + repoName + "' created successfully");
+            status.addStep("Create GitHub Repository", "SUCCESS",
+                    "GitHub repository '" + repoName + "' created successfully");
 
             // Step 10: Upload code to GitHub
             status.addStep("Upload Code to GitHub", "IN_PROGRESS", "Uploading application code to GitHub");
@@ -790,10 +797,12 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
                 throw new IllegalStateException("Docker Hub username is not configured");
             }
             String dockerRepoName = dockerHubUsername + "/" + repoName;
-            status.addStep("Create Docker Hub Repository", "IN_PROGRESS", "Creating Docker Hub repository: " + dockerRepoName);
+            status.addStep("Create Docker Hub Repository", "IN_PROGRESS",
+                    "Creating Docker Hub repository: " + dockerRepoName);
             log.info("🐳 Step 11: Creating Docker Hub repository '{}'", dockerRepoName);
             dockerHubService.createRepository(dockerRepoName);
-            status.addStep("Create Docker Hub Repository", "SUCCESS", "Docker Hub repository '" + dockerRepoName + "' created successfully");
+            status.addStep("Create Docker Hub Repository", "SUCCESS",
+                    "Docker Hub repository '" + dockerRepoName + "' created successfully");
 
             // Step 12: Build Docker Image
             String dockerImageName = dockerRepoName + ":latest";
@@ -876,9 +885,9 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
     private void extractZipFile(MultipartFile zipFile, Path extractPath) throws IOException {
         try {
             // Try using Apache Commons Compress first (handles more ZIP formats)
-            org.apache.commons.compress.archivers.zip.ZipArchiveInputStream zis = 
-                new org.apache.commons.compress.archivers.zip.ZipArchiveInputStream(zipFile.getInputStream());
-            
+            org.apache.commons.compress.archivers.zip.ZipArchiveInputStream zis = new org.apache.commons.compress.archivers.zip.ZipArchiveInputStream(
+                    zipFile.getInputStream());
+
             org.apache.commons.compress.archivers.ArchiveEntry entry;
             while ((entry = zis.getNextEntry()) != null) {
                 Path resolvedPath = extractPath.resolve(entry.getName()).normalize();
@@ -912,16 +921,19 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
                     zis.closeEntry();
                 }
             } catch (Exception fallbackException) {
-                log.error("Both ZIP extraction methods failed. Original: {}, Fallback: {}", 
-                    e.getMessage(), fallbackException.getMessage());
-                throw new IOException("Failed to extract ZIP file. The ZIP file may be corrupted or use an unsupported format. " +
-                    "Please ensure the ZIP file is valid and uses standard DEFLATE compression.", fallbackException);
+                log.error("Both ZIP extraction methods failed. Original: {}, Fallback: {}",
+                        e.getMessage(), fallbackException.getMessage());
+                throw new IOException(
+                        "Failed to extract ZIP file. The ZIP file may be corrupted or use an unsupported format. " +
+                                "Please ensure the ZIP file is valid and uses standard DEFLATE compression.",
+                        fallbackException);
             }
         }
     }
 
     /**
-     * Helper method to upload directory to GitHub (extracted from ProvisioningService for reuse)
+     * Helper method to upload directory to GitHub (extracted from
+     * ProvisioningService for reuse)
      */
     private void uploadDirectoryToGitHub(Path root, String repo) throws Exception {
         java.nio.file.Files.walk(root)
@@ -940,7 +952,8 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         byte[] content = java.nio.file.Files.readAllBytes(file);
         String base64 = Base64.getEncoder().encodeToString(content);
 
-        String api = "https://api.github.com/repos/" + provisioningService.getGithubOrg() + "/" + repo + "/contents/" + path;
+        String api = "https://api.github.com/repos/" + provisioningService.getGithubOrg() + "/" + repo + "/contents/"
+                + path;
 
         HttpURLConnection conn = (HttpURLConnection) new java.net.URL(api).openConnection();
         conn.setRequestMethod("PUT");
@@ -971,8 +984,10 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         headers.setBearerAuth(token);
 
         try {
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), String.class);
-            List<Map<String, Object>> users = objectMapper.readValue(response.getBody(), new TypeReference<>() {});
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers),
+                    String.class);
+            List<Map<String, Object>> users = objectMapper.readValue(response.getBody(), new TypeReference<>() {
+            });
             if (users.isEmpty()) {
                 log.error("User not found: {}", username);
                 throw new RuntimeException("User not found: " + username);
@@ -993,8 +1008,10 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         headers.setBearerAuth(token);
 
         try {
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), String.class);
-            List<Map<String, Object>> roles = objectMapper.readValue(response.getBody(), new TypeReference<>() {});
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers),
+                    String.class);
+            List<Map<String, Object>> roles = objectMapper.readValue(response.getBody(), new TypeReference<>() {
+            });
             String roleId = roles.stream()
                     .filter(r -> r.get("name").equals(roleName))
                     .map(r -> (String) r.get("id"))
@@ -1012,7 +1029,8 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         log.info("Assigning realm management role '{}' to user ID '{}'", roleName, userId);
         String clientId = getRealmManagementClientId(realm, token);
         String roleId = getRealmManagementRoleId(realm, roleName, token);
-        String url = config.getBaseUrl() + "/admin/realms/" + realm + "/users/" + userId + "/role-mappings/clients/" + clientId;
+        String url = config.getBaseUrl() + "/admin/realms/" + realm + "/users/" + userId + "/role-mappings/clients/"
+                + clientId;
 
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
@@ -1037,8 +1055,8 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
         ResponseEntity<List<Map<String, Object>>> response = restTemplate.exchange(
                 url, HttpMethod.GET, new HttpEntity<>(headers),
-                new ParameterizedTypeReference<>() {}
-        );
+                new ParameterizedTypeReference<>() {
+                });
         if (response.getBody() != null && !response.getBody().isEmpty()) {
             String clientId = (String) response.getBody().get(0).get("id");
             log.info("Found realm-management client ID: {}", clientId);
@@ -1056,8 +1074,10 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         headers.setBearerAuth(token);
 
         try {
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), String.class);
-            Map<String, Object> role = objectMapper.readValue(response.getBody(), new TypeReference<>() {});
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers),
+                    String.class);
+            Map<String, Object> role = objectMapper.readValue(response.getBody(), new TypeReference<>() {
+            });
             String roleId = (String) role.get("id");
             log.info("Found realm management role ID: {}", roleId);
             return roleId;
