@@ -33,7 +33,6 @@ public class ProvisioningService {
             @Value("${github.org}") String githubOrg) {
         this.githubToken = githubToken;
         this.githubOrg = githubOrg;
-        System.out.println("github token for testing = " + githubToken);
 
     }
 
@@ -69,6 +68,9 @@ public class ProvisioningService {
     // --------------------------------------------------
     public void createRepo(String repoName) throws IOException {
         // Validate GitHub configuration
+        System.out.println("github token for testing = " + githubToken);
+        System.out.println("github org for testing = " + githubOrg);
+
         if (githubToken == null || githubToken.isEmpty()) {
             throw new IllegalStateException(
                     "GitHub token is not configured. Please set GITHUB_TOKEN environment variable.");
