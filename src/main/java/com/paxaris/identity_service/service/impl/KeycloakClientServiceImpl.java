@@ -5,8 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paxaris.identity_service.dto.*;
 import com.paxaris.identity_service.service.KeycloakClientService;
 import com.paxaris.identity_service.service.ProvisioningService;
-import com.paxaris.identity_service.service.DockerHubService;
-import com.paxaris.identity_service.service.DockerBuildService;
+// import com.paxaris.identity_service.service.DockerHubService;
+// import com.paxaris.identity_service.service.DockerBuildService;
 import com.paxaris.identity_service.dto.SignupStatus;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -40,8 +40,8 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
     private final ProvisioningService provisioningService;
-    private final DockerHubService dockerHubService;
-    private final DockerBuildService dockerBuildService;
+    // private final DockerHubService dockerHubService;
+    // private final DockerBuildService dockerBuildService;
     @Value("${project.management.base-url}")
     private String projectManagementBaseUrl;
     @Value("${docker.hub.username}")
@@ -793,35 +793,40 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             status.addStep("Upload Code to GitHub", "SUCCESS", "Code uploaded to GitHub successfully");
 
             // Step 11: Create Docker Hub Repository
-            if (dockerHubUsername == null || dockerHubUsername.isEmpty()) {
-                throw new IllegalStateException("Docker Hub username is not configured");
-            }
-            String dockerRepoName = dockerHubUsername + "/" + repoName;
-            status.addStep("Create Docker Hub Repository", "IN_PROGRESS",
-                    "Creating Docker Hub repository: " + dockerRepoName);
-            log.info("🐳 Step 11: Creating Docker Hub repository '{}'", dockerRepoName);
-            dockerHubService.createRepository(dockerRepoName);
-            status.addStep("Create Docker Hub Repository", "SUCCESS",
-                    "Docker Hub repository '" + dockerRepoName + "' created successfully");
+            // if (dockerHubUsername == null || dockerHubUsername.isEmpty()) {
+            // throw new IllegalStateException("Docker Hub username is not configured");
+            // }
+            // String dockerRepoName = dockerHubUsername + "/" + repoName;
+            // status.addStep("Create Docker Hub Repository", "IN_PROGRESS",
+            // "Creating Docker Hub repository: " + dockerRepoName);
+            // log.info("🐳 Step 11: Creating Docker Hub repository '{}'", dockerRepoName);
+            // dockerHubService.createRepository(dockerRepoName);
+            // status.addStep("Create Docker Hub Repository", "SUCCESS",
+            // "Docker Hub repository '" + dockerRepoName + "' created successfully");
 
-            // Step 12: Build Docker Image
-            String dockerImageName = dockerRepoName + ":latest";
-            status.addStep("Build Docker Image", "IN_PROGRESS", "Building Docker image: " + dockerImageName);
-            log.info("🔨 Step 12: Building Docker image '{}'", dockerImageName);
-            boolean buildSuccess = dockerBuildService.buildDockerImage(extractedCodePath, dockerImageName);
-            if (!buildSuccess) {
-                throw new RuntimeException("Docker image build failed");
-            }
-            status.addStep("Build Docker Image", "SUCCESS", "Docker image built successfully");
+            // // Step 12: Build Docker Image
+            // String dockerImageName = dockerRepoName + ":latest";
+            // status.addStep("Build Docker Image", "IN_PROGRESS", "Building Docker image: "
+            // + dockerImageName);
+            // log.info("🔨 Step 12: Building Docker image '{}'", dockerImageName);
+            // boolean buildSuccess = dockerBuildService.buildDockerImage(extractedCodePath,
+            // dockerImageName);
+            // if (!buildSuccess) {
+            // throw new RuntimeException("Docker image build failed");
+            // }
+            // status.addStep("Build Docker Image", "SUCCESS", "Docker image built
+            // successfully");
 
-            // Step 13: Push Docker Image to Docker Hub
-            status.addStep("Push Docker Image", "IN_PROGRESS", "Pushing Docker image to Docker Hub");
-            log.info("📤 Step 13: Pushing Docker image to Docker Hub");
-            boolean pushSuccess = dockerBuildService.pushDockerImage(dockerImageName);
-            if (!pushSuccess) {
-                throw new RuntimeException("Docker image push failed");
-            }
-            status.addStep("Push Docker Image", "SUCCESS", "Docker image pushed to Docker Hub successfully");
+            // // Step 13: Push Docker Image to Docker Hub
+            // status.addStep("Push Docker Image", "IN_PROGRESS", "Pushing Docker image to
+            // Docker Hub");
+            // log.info("📤 Step 13: Pushing Docker image to Docker Hub");
+            // boolean pushSuccess = dockerBuildService.pushDockerImage(dockerImageName);
+            // if (!pushSuccess) {
+            // throw new RuntimeException("Docker image push failed");
+            // }
+            // status.addStep("Push Docker Image", "SUCCESS", "Docker image pushed to Docker
+            // Hub successfully");
 
             // Cleanup extracted code
             if (extractedCodePath != null && Files.exists(extractedCodePath)) {
