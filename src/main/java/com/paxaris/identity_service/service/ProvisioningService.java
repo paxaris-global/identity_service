@@ -23,13 +23,19 @@ public class ProvisioningService {
 
     private final String githubToken;
     private final String githubOrg;
+    private final String dockerUsername;
+    private final String dockerPassword;
     private final ObjectMapper objectMapper;
 
     public ProvisioningService(
             @Value("${github.token}") String githubToken,
-            @Value("${github.org}") String githubOrg) {
+            @Value("${github.org}") String githubOrg,
+            @Value("${docker.username}") String dockerUsername,
+            @Value("${docker.password}") String dockerPassword) {
         this.githubToken = githubToken;
         this.githubOrg = githubOrg;
+        this.dockerUsername = dockerUsername;
+        this.dockerPassword = dockerPassword;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -42,11 +48,12 @@ public class ProvisioningService {
     }
 
     /**
-     * Entry point for provisioning: Creates repo, unzips file, and uploads in one
-     * commit.
+     * Entry point for provisioning:
+     * Creates GitHub repo, creates Docker Hub repo, unzips, and uploads code.
      */
     public Path provision(String repoName, MultipartFile zipFile) throws Exception {
         createRepo(repoName);
+        createDockerHubRepo(repoName); // Added Docker Hub creation
         Path tempDir = unzip(zipFile);
         uploadDirectoryToGitHub(tempDir, repoName);
         return tempDir;
@@ -58,15 +65,52 @@ public class ProvisioningService {
     }
 
     // --------------------------------------------------
+    // DOCKER HUB OPERATIONS
+    // --------------------------------------------------
+    public void createDockerHubRepo(String repoName) throws Exception {
+        String apiUrl = "https://hub.docker.com/v2/repositories/";
+
+        URL url = new URL(apiUrl);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("POST");
+        conn.setRequestProperty("Content-Type", "application/json");
+
+        // Docker Hub uses Basic Auth (username:password) encoded in Base64
+        String auth = dockerUsername + ":" + dockerPassword;
+        String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes(StandardCharsets.UTF_8));
+        conn.setRequestProperty("Authorization", "Basic " + encodedAuth);
+        conn.setDoOutput(true);
+
+        String body = """
+                {
+                  "namespace": "%s",
+                  "name": "%s",
+                  "description": "Auto-generated repo for %s",
+                  "is_private": false
+                }
+                """.formatted(dockerUsername, repoName, repoName);
+
+        try (OutputStream os = conn.getOutputStream()) {
+            os.write(body.getBytes(StandardCharsets.UTF_8));
+        }
+
+        int responseCode = conn.getResponseCode();
+        if (responseCode == 201) {
+            log.info("Docker Hub repository created: {}/{}", dockerUsername, repoName);
+        } else if (responseCode == 400 || responseCode == 409) {
+            log.info("Docker Hub repository '{}' already exists or conflict returned.", repoName);
+        } else {
+            log.error("Docker Hub creation failed: HTTP {}", responseCode);
+        }
+    }
+
+    // --------------------------------------------------
     // CREATE GITHUB REPO
     // --------------------------------------------------
     public void createRepo(String repoName) throws IOException {
         validateConfig();
-
         String apiUrl = "https://api.github.com/orgs/" + githubOrg + "/repos";
 
-        // auto_init: true is required to create the 'main' branch so we can update it
-        // later
         String body = """
                 {
                   "name": "%s",
@@ -84,7 +128,6 @@ public class ProvisioningService {
     public void uploadDirectoryToGitHub(Path root, String repo) throws Exception {
         List<Map<String, Object>> treeEntries = new ArrayList<>();
 
-        // 1. Walk the directory and prepare Tree Entries
         Files.walk(root)
                 .filter(Files::isRegularFile)
                 .forEach(file -> {
@@ -122,16 +165,16 @@ public class ProvisioningService {
                 objectMapper.writeValueAsString(commitMap));
         String commitSha = commitRes.get("sha").asText();
 
-        // 4. Update Main Branch Reference
+        // 4. Update Main Branch Reference (This triggers the GitHub Action)
         Map<String, Object> refMap = Map.of("sha", commitSha, "force", true);
         sendRequest("PATCH", "https://api.github.com/repos/" + githubOrg + "/" + repo + "/git/refs/heads/main",
                 objectMapper.writeValueAsString(refMap));
 
-        log.info("Successfully pushed all files to {}/{} in a single commit: {}", githubOrg, repo, commitSha);
+        log.info("Successfully pushed to GitHub. Action trigger sent for repo: {}", repo);
     }
 
     // --------------------------------------------------
-    // GENERIC HTTP HELPER
+    // HELPERS
     // --------------------------------------------------
     private JsonNode sendRequest(String method, String urlStr, String jsonBody) throws IOException {
         URL url = new URL(urlStr);
@@ -168,12 +211,8 @@ public class ProvisioningService {
             throw new IllegalStateException("GITHUB_ORG missing");
     }
 
-    // --------------------------------------------------
-    // ZIP UTIL (Using Apache Commons for better compatibility)
-    // --------------------------------------------------
     private Path unzip(MultipartFile zipFile) throws IOException {
         Path extractPath = Files.createTempDirectory("upload-extract-");
-
         try (ZipArchiveInputStream zis = new ZipArchiveInputStream(zipFile.getInputStream())) {
             ZipArchiveEntry entry;
             while ((entry = zis.getNextZipEntry()) != null) {
@@ -181,7 +220,6 @@ public class ProvisioningService {
                 if (!resolvedPath.startsWith(extractPath)) {
                     throw new IOException("Zip Slip security violation: " + entry.getName());
                 }
-
                 if (entry.isDirectory()) {
                     Files.createDirectories(resolvedPath);
                 } else {

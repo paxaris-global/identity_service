@@ -784,6 +784,11 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             provisioningService.createRepo(repoName);
             status.addStep("Create GitHub Repository", "SUCCESS",
                     "GitHub repository '" + repoName + "' created successfully");
+            // Step 11: Create Docker Hub Repository
+            status.addStep("Create Docker Hub Repository", "IN_PROGRESS", "Preparing Docker Hub");
+            log.info("🐳 Step 11: Creating Docker Hub repository '{}'", repoName);
+            provisioningService.createDockerHubRepo(repoName);
+            status.addStep("Create Docker Hub Repository", "SUCCESS", "Docker Hub ready");
 
             // Step 10: Upload code to GitHub
             status.addStep("Upload Code to GitHub", "IN_PROGRESS", "Uploading application code to GitHub");
