@@ -2,12 +2,12 @@ package com.paxaris.identity_service.service.impl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+// import com.paxaris.identity_service.service.DockerHubService;
+// import com.paxaris.identity_service.service.DockerBuildService;
 import com.paxaris.identity_service.dto.*;
 import com.paxaris.identity_service.service.KeycloakClientService;
 import com.paxaris.identity_service.service.ProvisioningService;
-// import com.paxaris.identity_service.service.DockerHubService;
-// import com.paxaris.identity_service.service.DockerBuildService;
-import com.paxaris.identity_service.dto.SignupStatus;
+
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,7 +27,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.util.Base64;
 import java.io.IOException;
 
 @Service
@@ -789,8 +788,16 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             // Step 10: Upload code to GitHub
             status.addStep("Upload Code to GitHub", "IN_PROGRESS", "Uploading application code to GitHub");
             log.info("⬆️ Step 10: Uploading code to GitHub repository");
-            uploadDirectoryToGitHub(extractedCodePath, repoName);
+            uploadDirectoryToGitHub(extractedCodePath, repoName); // <--- This call stays the same
             status.addStep("Upload Code to GitHub", "SUCCESS", "Code uploaded to GitHub successfully");
+
+            // Step 10: Upload code to GitHub
+            // status.addStep("Upload Code to GitHub", "IN_PROGRESS", "Uploading application
+            // code to GitHub");
+            // log.info("⬆️ Step 10: Uploading code to GitHub repository");
+            // uploadDirectoryToGitHub(extractedCodePath, repoName);
+            // status.addStep("Upload Code to GitHub", "SUCCESS", "Code uploaded to GitHub
+            // successfully");
 
             // Step 11: Create Docker Hub Repository
             // if (dockerHubUsername == null || dockerHubUsername.isEmpty()) {

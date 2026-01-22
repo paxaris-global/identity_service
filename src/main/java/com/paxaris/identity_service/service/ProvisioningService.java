@@ -1,26 +1,39 @@
 package com.paxaris.identity_service.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
+import org.apache.commons.compress.archivers.zip.ZipArchiveInputStream;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
-import java.util.Base64;
-import java.util.Comparator;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
+import java.util.*;
 
+@Slf4j
 @Service
 public class ProvisioningService {
 
     private final String githubToken;
     private final String githubOrg;
+    private final ObjectMapper objectMapper;
+
+    public ProvisioningService(
+            @Value("${github.token}") String githubToken,
+            @Value("${github.org}") String githubOrg) {
+        this.githubToken = githubToken;
+        this.githubOrg = githubOrg;
+        this.objectMapper = new ObjectMapper();
+    }
 
     public String getGithubToken() {
-
         return githubToken;
     }
 
@@ -28,37 +41,18 @@ public class ProvisioningService {
         return githubOrg;
     }
 
-    public ProvisioningService(
-            @Value("${github.token}") String githubToken,
-            @Value("${github.org}") String githubOrg) {
-        this.githubToken = githubToken;
-        this.githubOrg = githubOrg;
-
-    }
-
+    /**
+     * Entry point for provisioning: Creates repo, unzips file, and uploads in one
+     * commit.
+     */
     public Path provision(String repoName, MultipartFile zipFile) throws Exception {
-
         createRepo(repoName);
-
         Path tempDir = unzip(zipFile);
         uploadDirectoryToGitHub(tempDir, repoName);
-
-        // Note: We don't trigger GitHub Action build anymore as we'll build Docker
-        // image directly
-        // triggerBuild(repoName);
-
-        // Return the temp directory path so it can be used for Docker build
-        // Caller is responsible for cleanup
         return tempDir;
     }
 
-    /**
-     * Creates a repository name using realm name, admin username (realm.nadm
-     * format), and client name
-     */
     public static String generateRepositoryName(String realmName, String adminUsername, String clientName) {
-        // Format: realm-admin-client (e.g., "myrealm-adminuser-myclient")
-        // Using admin username in realm.nadm format as specified
         String adminPart = adminUsername != null ? adminUsername : "admin";
         return String.format("%s-%s-%s", realmName, adminPart, clientName).toLowerCase();
     }
@@ -67,29 +61,12 @@ public class ProvisioningService {
     // CREATE GITHUB REPO
     // --------------------------------------------------
     public void createRepo(String repoName) throws IOException {
-        // Validate GitHub configuration
-        System.out.println("github token for testing = " + githubToken);
-        System.out.println("github org for testing = " + githubOrg);
-
-        if (githubToken == null || githubToken.isEmpty()) {
-            throw new IllegalStateException(
-                    "GitHub token is not configured. Please set GITHUB_TOKEN environment variable.");
-        }
-        if (githubOrg == null || githubOrg.isEmpty()) {
-            throw new IllegalStateException(
-                    "GitHub organization is not configured. Please set GITHUB_ORG environment variable.");
-        }
+        validateConfig();
 
         String apiUrl = "https://api.github.com/orgs/" + githubOrg + "/repos";
 
-        HttpURLConnection conn = (HttpURLConnection) new URL(apiUrl).openConnection();
-
-        conn.setRequestMethod("POST");
-        conn.setRequestProperty("Authorization", "Bearer " + githubToken);
-        conn.setRequestProperty("Accept", "application/vnd.github+json");
-        conn.setRequestProperty("Content-Type", "application/json");
-        conn.setDoOutput(true);
-
+        // auto_init: true is required to create the 'main' branch so we can update it
+        // later
         String body = """
                 {
                   "name": "%s",
@@ -98,129 +75,111 @@ public class ProvisioningService {
                 }
                 """.formatted(repoName);
 
-        conn.getOutputStream().write(body.getBytes());
-
-        int responseCode = conn.getResponseCode();
-
-        if (responseCode != 201) {
-            // Read error response for better error message
-            String errorMessage = "GitHub org repo creation failed. HTTP " + responseCode;
-            try {
-                java.io.BufferedReader reader = new java.io.BufferedReader(
-                        new java.io.InputStreamReader(
-                                responseCode >= 400 ? conn.getErrorStream() : conn.getInputStream()));
-                StringBuilder response = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    response.append(line);
-                }
-                if (response.length() > 0) {
-                    errorMessage += " - " + response.toString();
-                }
-            } catch (Exception e) {
-                // Ignore error reading response
-            }
-
-            // Provide specific error messages based on status code
-            if (responseCode == 401) {
-                errorMessage = "GitHub authentication failed (401). Please check that your GITHUB_TOKEN is valid and has not expired. "
-                        +
-                        "The token needs 'repo' and 'admin:org' permissions for organization repositories.";
-            } else if (responseCode == 403) {
-                errorMessage = "GitHub access forbidden (403). The token may not have sufficient permissions. " +
-                        "Required permissions: 'repo' (full control) and 'admin:org' (write) for organization repositories.";
-            } else if (responseCode == 404) {
-                errorMessage = "GitHub organization '" + githubOrg
-                        + "' not found (404). Please verify the GITHUB_ORG configuration.";
-            } else if (responseCode == 422) {
-                errorMessage = "GitHub repository creation failed (422). The repository name may already exist or be invalid.";
-            }
-
-            throw new RuntimeException(errorMessage);
-        }
+        sendRequest("POST", apiUrl, body);
     }
 
     // --------------------------------------------------
-    // UPLOAD FILES
+    // UPLOAD FILES (THE "ONE COMMIT" LOGIC)
     // --------------------------------------------------
-    private void uploadDirectoryToGitHub(Path root, String repo) throws Exception {
+    public void uploadDirectoryToGitHub(Path root, String repo) throws Exception {
+        List<Map<String, Object>> treeEntries = new ArrayList<>();
+
+        // 1. Walk the directory and prepare Tree Entries
         Files.walk(root)
                 .filter(Files::isRegularFile)
                 .forEach(file -> {
                     try {
-                        uploadFile(root, file, repo);
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
+                        String path = root.relativize(file).toString().replace("\\", "/");
+                        byte[] content = Files.readAllBytes(file);
+
+                        Map<String, Object> entry = new HashMap<>();
+                        entry.put("path", path);
+                        entry.put("mode", "100644");
+                        entry.put("type", "blob");
+                        entry.put("content", new String(content, StandardCharsets.UTF_8));
+
+                        treeEntries.add(entry);
+                    } catch (IOException e) {
+                        throw new RuntimeException("Error reading file for GitHub upload: " + file, e);
                     }
                 });
+
+        if (treeEntries.isEmpty())
+            return;
+
+        // 2. Create a Git Tree
+        Map<String, Object> treeMap = Map.of("tree", treeEntries);
+        JsonNode treeRes = sendRequest("POST", "https://api.github.com/repos/" + githubOrg + "/" + repo + "/git/trees",
+                objectMapper.writeValueAsString(treeMap));
+        String treeSha = treeRes.get("sha").asText();
+
+        // 3. Create a Commit
+        Map<String, Object> commitMap = Map.of(
+                "message", "Initial project upload",
+                "tree", treeSha);
+        JsonNode commitRes = sendRequest("POST",
+                "https://api.github.com/repos/" + githubOrg + "/" + repo + "/git/commits",
+                objectMapper.writeValueAsString(commitMap));
+        String commitSha = commitRes.get("sha").asText();
+
+        // 4. Update Main Branch Reference
+        Map<String, Object> refMap = Map.of("sha", commitSha, "force", true);
+        sendRequest("PATCH", "https://api.github.com/repos/" + githubOrg + "/" + repo + "/git/refs/heads/main",
+                objectMapper.writeValueAsString(refMap));
+
+        log.info("Successfully pushed all files to {}/{} in a single commit: {}", githubOrg, repo, commitSha);
     }
 
-    private void uploadFile(Path root, Path file, String repo) throws Exception {
-
-        String path = root.relativize(file).toString().replace("\\", "/");
-        byte[] content = Files.readAllBytes(file);
-        String base64 = Base64.getEncoder().encodeToString(content);
-
-        String api = "https://api.github.com/repos/" + githubOrg + "/" + repo + "/contents/" + path;
-
-        HttpURLConnection conn = (HttpURLConnection) new URL(api).openConnection();
-        conn.setRequestMethod("PUT");
+    // --------------------------------------------------
+    // GENERIC HTTP HELPER
+    // --------------------------------------------------
+    private JsonNode sendRequest(String method, String urlStr, String jsonBody) throws IOException {
+        URL url = new URL(urlStr);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod(method);
         conn.setRequestProperty("Authorization", "Bearer " + githubToken);
         conn.setRequestProperty("Accept", "application/vnd.github+json");
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setDoOutput(true);
 
-        String payload = """
-                {
-                  "message": "initial commit",
-                  "content": "%s"
-                }
-                """.formatted(base64);
-
-        conn.getOutputStream().write(payload.getBytes());
-
-        if (conn.getResponseCode() >= 300) {
-            throw new RuntimeException("File upload failed: " + path);
+        if (jsonBody != null) {
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(jsonBody.getBytes(StandardCharsets.UTF_8));
+            }
         }
+
+        int responseCode = conn.getResponseCode();
+        if (responseCode >= 300) {
+            String errorResponse = "";
+            try (java.io.InputStream is = conn.getErrorStream()) {
+                if (is != null)
+                    errorResponse = new String(is.readAllBytes());
+            }
+            throw new RuntimeException("GitHub API error (" + responseCode + ") at " + urlStr + ": " + errorResponse);
+        }
+
+        return objectMapper.readTree(conn.getInputStream());
+    }
+
+    private void validateConfig() {
+        if (githubToken == null || githubToken.isEmpty())
+            throw new IllegalStateException("GITHUB_TOKEN missing");
+        if (githubOrg == null || githubOrg.isEmpty())
+            throw new IllegalStateException("GITHUB_ORG missing");
     }
 
     // --------------------------------------------------
-    // TRIGGER GITHUB ACTION
+    // ZIP UTIL (Using Apache Commons for better compatibility)
     // --------------------------------------------------
-    private void triggerBuild(String repo) throws IOException {
+    private Path unzip(MultipartFile zipFile) throws IOException {
+        Path extractPath = Files.createTempDirectory("upload-extract-");
 
-        String api = "https://api.github.com/repos/" + githubOrg + "/" + repo + "/dispatches";
-
-        HttpURLConnection conn = (HttpURLConnection) new URL(api).openConnection();
-        conn.setRequestMethod("POST");
-        conn.setRequestProperty("Authorization", "Bearer " + githubToken);
-        conn.setRequestProperty("Accept", "application/vnd.github+json");
-        conn.setRequestProperty("Content-Type", "application/json");
-        conn.setDoOutput(true);
-
-        conn.getOutputStream().write("{ \"event_type\": \"build-image\" }".getBytes());
-
-        if (conn.getResponseCode() != 204) {
-            throw new RuntimeException("GitHub Action trigger failed");
-        }
-    }
-
-    // --------------------------------------------------
-    // UTIL
-    // --------------------------------------------------
-    private Path unzip(MultipartFile zip) throws IOException {
-
-        Path dir = Files.createTempDirectory("upload");
-
-        try (ZipInputStream zis = new ZipInputStream(zip.getInputStream())) {
-
-            ZipEntry entry;
-
-            while ((entry = zis.getNextEntry()) != null) {
-                Path resolvedPath = dir.resolve(entry.getName()).normalize();
-
-                if (!resolvedPath.startsWith(dir)) {
-                    throw new IOException("Invalid zip entry");
+        try (ZipArchiveInputStream zis = new ZipArchiveInputStream(zipFile.getInputStream())) {
+            ZipArchiveEntry entry;
+            while ((entry = zis.getNextZipEntry()) != null) {
+                Path resolvedPath = extractPath.resolve(entry.getName()).normalize();
+                if (!resolvedPath.startsWith(extractPath)) {
+                    throw new IOException("Zip Slip security violation: " + entry.getName());
                 }
 
                 if (entry.isDirectory()) {
@@ -229,20 +188,8 @@ public class ProvisioningService {
                     Files.createDirectories(resolvedPath.getParent());
                     Files.copy(zis, resolvedPath, StandardCopyOption.REPLACE_EXISTING);
                 }
-                zis.closeEntry();
             }
         }
-        return dir;
-    }
-
-    private void deleteDirectory(Path path) throws IOException {
-        Files.walk(path)
-                .sorted(Comparator.reverseOrder())
-                .forEach(p -> {
-                    try {
-                        Files.delete(p);
-                    } catch (Exception ignored) {
-                    }
-                });
+        return extractPath;
     }
 }
