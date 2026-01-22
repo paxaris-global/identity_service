@@ -132,24 +132,46 @@ public class ProvisioningService {
                 .filter(Files::isRegularFile)
                 .forEach(file -> {
                     try {
-                        String path = root.relativize(file).toString().replace("\\", "/");
+                        // 1. Get the path relative to the extracted folder
+                        String relativePath = root.relativize(file).toString().replace("\\", "/");
+
+                        String finalPath;
+
+                        // 2. Determine the Final Path
+                        // If it's a workflow file (main.yml), move it to .github/workflows/ at root
+                        if (relativePath.endsWith("main.yml") || relativePath.contains(".github/")) {
+                            // Extract just the filename (e.g., main.yml)
+                            String fileName = file.getFileName().toString();
+                            finalPath = ".github/workflows/" + fileName;
+                        }
+                        // If it's a README, move it to the root
+                        else if (relativePath.toLowerCase().contains("readme.md")) {
+                            finalPath = "README.md";
+                        }
+                        // Otherwise, keep the path as is
+                        else {
+                            finalPath = relativePath;
+                        }
+
                         byte[] content = Files.readAllBytes(file);
 
                         Map<String, Object> entry = new HashMap<>();
-                        entry.put("path", path);
+                        entry.put("path", finalPath);
                         entry.put("mode", "100644");
                         entry.put("type", "blob");
                         entry.put("content", new String(content, StandardCharsets.UTF_8));
 
                         treeEntries.add(entry);
+                        log.info("Mapping file: {} -> {}", relativePath, finalPath);
                     } catch (IOException e) {
-                        throw new RuntimeException("Error reading file for GitHub upload: " + file, e);
+                        throw new RuntimeException("Error processing file: " + file, e);
                     }
                 });
 
         if (treeEntries.isEmpty())
             return;
 
+        // ... the rest of your Tree/Commit/Ref API calls remain exactly the same ...
         // 2. Create a Git Tree
         Map<String, Object> treeMap = Map.of("tree", treeEntries);
         JsonNode treeRes = sendRequest("POST", "https://api.github.com/repos/" + githubOrg + "/" + repo + "/git/trees",
@@ -157,15 +179,13 @@ public class ProvisioningService {
         String treeSha = treeRes.get("sha").asText();
 
         // 3. Create a Commit
-        Map<String, Object> commitMap = Map.of(
-                "message", "Initial project upload",
-                "tree", treeSha);
+        Map<String, Object> commitMap = Map.of("message", "Initial project upload", "tree", treeSha);
         JsonNode commitRes = sendRequest("POST",
                 "https://api.github.com/repos/" + githubOrg + "/" + repo + "/git/commits",
                 objectMapper.writeValueAsString(commitMap));
         String commitSha = commitRes.get("sha").asText();
 
-        // 4. Update Main Branch Reference (This triggers the GitHub Action)
+        // 4. Update Main Branch Reference
         Map<String, Object> refMap = Map.of("sha", commitSha, "force", true);
         sendRequest("PATCH", "https://api.github.com/repos/" + githubOrg + "/" + repo + "/git/refs/heads/main",
                 objectMapper.writeValueAsString(refMap));
