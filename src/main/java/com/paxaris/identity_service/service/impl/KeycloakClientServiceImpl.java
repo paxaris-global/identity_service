@@ -793,7 +793,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
             // Step 10: Upload code to GitHub
             // status.addStep("Upload Code to GitHub", "IN_PROGRESS", "Uploading application
-            // code to GitHub");
+            // code to GitHub");ok
             // log.info("⬆️ Step 10: Uploading code to GitHub repository");
             // uploadDirectoryToGitHub(extractedCodePath, repoName);
             // status.addStep("Upload Code to GitHub", "SUCCESS", "Code uploaded to GitHub
