@@ -49,4 +49,6 @@ public interface KeycloakClientService {
     // Signup operation
     SignupStatus signup(SignupRequest request, MultipartFile sourceZip);
 
+    //get all clients
+    List<Map<String, Object>> getClientRoles(String realm, String clientName, String token);
 }

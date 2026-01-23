@@ -419,6 +419,27 @@ public class KeycloakClientController {
         }
     }
 
+    @GetMapping("/identity/{realm}/clients/{clientName}/roles")
+    public ResponseEntity<?> getClientRoles(
+            @PathVariable String realm,
+            @PathVariable String clientName,
+            @RequestHeader("Authorization") String authorizationHeader) {
+
+        String token = authorizationHeader.startsWith("Bearer ")
+                ? authorizationHeader.substring(7)
+                : authorizationHeader;
+
+        try {
+            List<Map<String, Object>> roles =
+                    clientService.getClientRoles(realm, clientName, token);
+
+            return ResponseEntity.ok(roles);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to fetch client roles: " + e.getMessage());
+        }
+    }
+
     // ----------------------------------------------------------------------------------------------------------------------------------------------
     @PutMapping("/identity/role/{realm}/{client}/{roleName}")
     public ResponseEntity<String> updateRole(

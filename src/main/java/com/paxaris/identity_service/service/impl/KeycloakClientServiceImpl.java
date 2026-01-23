@@ -515,6 +515,41 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         }
     }
 
+    //-------------------------------getClientRoles----------------------------------
+    @Override
+    public List<Map<String, Object>> getClientRoles(String realm, String clientName, String token) {
+        log.info("Fetching client roles for client '{}' in realm '{}'", clientName, realm);
+
+        String clientUUID = getClientUUID(realm, clientName, token);
+        log.info("Client UUID for '{}' is '{}'", clientName, clientUUID);
+
+        String url = config.getBaseUrl()
+                + "/admin/realms/" + realm
+                + "/clients/" + clientUUID
+                + "/roles";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+        try {
+            ResponseEntity<List> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    entity,
+                    List.class
+            );
+
+            return response.getBody();
+        } catch (Exception e) {
+            log.error("Failed to fetch client roles: {}", e.getMessage());
+            throw new RuntimeException("Failed to fetch client roles", e);
+        }
+    }
+
+
     @Override
     public void createRealmRole(String realm, String roleName, String clientId, String token) {
         log.info("Attempting to create realm role '{}' in realm '{}'", roleName, realm);
@@ -790,50 +825,6 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             log.info("⬆️ Step 10: Uploading code to GitHub repository");
             uploadDirectoryToGitHub(extractedCodePath, repoName); // <--- This call stays the same
             status.addStep("Upload Code to GitHub", "SUCCESS", "Code uploaded to GitHub successfully");
-
-            // Step 10: Upload code to GitHub
-            // status.addStep("Upload Code to GitHub", "IN_PROGRESS", "Uploading application
-            // code to GitHub");ok
-            // log.info("⬆️ Step 10: Uploading code to GitHub repository");
-            // uploadDirectoryToGitHub(extractedCodePath, repoName);
-            // status.addStep("Upload Code to GitHub", "SUCCESS", "Code uploaded to GitHub
-            // successfully");
-
-            // Step 11: Create Docker Hub Repository
-            // if (dockerHubUsername == null || dockerHubUsername.isEmpty()) {
-            // throw new IllegalStateException("Docker Hub username is not configured");
-            // }
-            // String dockerRepoName = dockerHubUsername + "/" + repoName;
-            // status.addStep("Create Docker Hub Repository", "IN_PROGRESS",
-            // "Creating Docker Hub repository: " + dockerRepoName);
-            // log.info("🐳 Step 11: Creating Docker Hub repository '{}'", dockerRepoName);
-            // dockerHubService.createRepository(dockerRepoName);
-            // status.addStep("Create Docker Hub Repository", "SUCCESS",
-            // "Docker Hub repository '" + dockerRepoName + "' created successfully");
-
-            // // Step 12: Build Docker Image
-            // String dockerImageName = dockerRepoName + ":latest";
-            // status.addStep("Build Docker Image", "IN_PROGRESS", "Building Docker image: "
-            // + dockerImageName);
-            // log.info("🔨 Step 12: Building Docker image '{}'", dockerImageName);
-            // boolean buildSuccess = dockerBuildService.buildDockerImage(extractedCodePath,
-            // dockerImageName);
-            // if (!buildSuccess) {
-            // throw new RuntimeException("Docker image build failed");
-            // }
-            // status.addStep("Build Docker Image", "SUCCESS", "Docker image built
-            // successfully");
-
-            // // Step 13: Push Docker Image to Docker Hub
-            // status.addStep("Push Docker Image", "IN_PROGRESS", "Pushing Docker image to
-            // Docker Hub");
-            // log.info("📤 Step 13: Pushing Docker image to Docker Hub");
-            // boolean pushSuccess = dockerBuildService.pushDockerImage(dockerImageName);
-            // if (!pushSuccess) {
-            // throw new RuntimeException("Docker image push failed");
-            // }
-            // status.addStep("Push Docker Image", "SUCCESS", "Docker image pushed to Docker
-            // Hub successfully");
 
             // Cleanup extracted code
             if (extractedCodePath != null && Files.exists(extractedCodePath)) {
