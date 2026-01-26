@@ -481,13 +481,13 @@ public class KeycloakClientController {
 
     // ------------------- ASSIGN ROLE -------------------
     // ------------------- ASSIGN CLIENT ROLE -------------------
-    @PostMapping("/{realm}/users/{username}/clients/{clientName}/roles")
+     @PostMapping("/{realm}/users/{username}/clients/{clientName}/roles/{roleName}")
     public ResponseEntity<String> assignClientRoleToUser(
             @PathVariable String realm,
             @PathVariable String username,
             @PathVariable String clientName,
             @RequestHeader("Authorization") String authorizationHeader,
-            @RequestParam String roleName) {
+            @PathVariable String roleName) {
         try {
             // Extract token from header
             log.info(" in assignClientRoleToUser. token:" + authorizationHeader);
