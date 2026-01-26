@@ -11,6 +11,7 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpEntity;
@@ -35,6 +36,7 @@ import java.util.*;
 @RestController
 @RequestMapping("/")
 @RequiredArgsConstructor
+@Slf4j
 public class KeycloakClientController {
 
     private final RestTemplate restTemplate = new RestTemplate();
@@ -488,6 +490,7 @@ public class KeycloakClientController {
             @RequestParam String roleName) {
         try {
             // Extract token from header
+            log.info(" in assignClientRoleToUser. token:" + authorizationHeader);
             String token = authorizationHeader.startsWith("Bearer ")
                     ? authorizationHeader.substring(7)
                     : authorizationHeader;
