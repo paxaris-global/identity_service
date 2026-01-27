@@ -51,12 +51,13 @@ public interface KeycloakClientService {
             String token);
 
     // Assign roles by names - resolve IDs internally then assign
-    void assignClientRolesByName(
+   void assignClientRolesByName(
             String realm,
             String username,
             String clientName,
             String token,
-            List<Map<String, Object>> rolesByName);
+            List<Map<String, Object>> roleNames
+    );
 
     // Signup operation
     SignupStatus signup(SignupRequest request, MultipartFile sourceZip);
