@@ -749,7 +749,8 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         return matchedRoles;
     }
 
-    private void assignClientRolesToUser(
+    @Override
+    public void assignClientRolesToUser(
             String realm,
             String userId,
             String clientUUID,
