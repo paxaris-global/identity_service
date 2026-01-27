@@ -653,7 +653,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
     }
 
     // ---------------- ROLE ASSIGN ----------------
-    @Override
+   @Override
     public void assignClientRoles(
             String realm,
             String username,
@@ -672,7 +672,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
     }
 
     @Override
- public void assignClientRolesToUser(
+     public void assignClientRolesToUser(
             String realm,
             String userId,
             String clientUUID,
@@ -682,16 +682,45 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
                 + "/admin/realms/" + realm
                 + "/users/" + userId
                 + "/role-mappings/clients/" + clientUUID;
+        String realm,
+        String userId,
+        String clientUUID,
+        List<Map<String, Object>> rolesBody,
+        String token) {
 
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
+    List<Map<String, Object>> rolesToAssign = new ArrayList<>();
 
         restTemplate.postForEntity(
                 url,
                 new HttpEntity<>(rolesBody, headers),
                 String.class);
+    for (Map<String, Object> roleMap : rolesBody) {
+        String roleName = roleMap.get("name").toString();
+        String roleId = getClientRoleId(realm, clientUUID, roleName, token);
+
+        Map<String, Object> roleObj = new HashMap<>();
+        roleObj.put("id", roleId);
+        roleObj.put("name", roleName);
+
+        rolesToAssign.add(roleObj);
     }
+
+    String url = config.getBaseUrl()
+            + "/admin/realms/" + realm
+            + "/users/" + userId
+            + "/role-mappings/clients/" + clientUUID;
+
+    HttpHeaders headers = new HttpHeaders();
+    headers.setBearerAuth(token);
+    headers.setContentType(MediaType.APPLICATION_JSON);
+
+    restTemplate.postForEntity(
+            url,
+            new HttpEntity<>(rolesToAssign, headers),
+            String.class);
 
     
     // ---------------- SIGNUP ----------------
