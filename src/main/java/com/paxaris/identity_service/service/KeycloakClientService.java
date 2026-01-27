@@ -12,56 +12,65 @@ public interface KeycloakClientService {
 
     // Token operations
     Map<String, Object> getMyRealmToken(String username, String password, String clientId, String realm);
+
     boolean validateToken(String realm, String token);
 
     Map<String, Object> getRealmToken(String realm,
-                                      String username,
-                                      String password,
-                                      String clientId,
-                                      String clientSecret);
+            String username,
+            String password,
+            String clientId,
+            String clientSecret);
+
     // Realm operations
     void createRealm(String realmName, String token);
+
     List<Map<String, Object>> getAllRealms(String token);
 
     // Client operations
     String createClient(String realm, String clientId, boolean isPublicClient, String token);
+
     List<Map<String, Object>> getAllClients(String realm, String token);
+
     String getClientSecret(String realm, String clientId, String token);
+
     String getClientUUID(String realm, String clientName, String token);
+
     String getClientId(String realm, String clientName, String token);
 
     // User operations
     String createUser(String realm, String token, Map<String, Object> userPayload);
+
     List<Map<String, Object>> getAllUsers(String realm, String token);
 
     // Role operations
     void createClientRoles(String realm, String clientName, List<RoleCreationRequest> roleRequests, String token);
+
     void createRealmRole(String realm, String roleName, String clientId, String token);
+
     boolean createRole(String realm, String clientUUID, RoleCreationRequest role, String token);
+
     boolean updateRole(String realm, String clientUUID, String roleName, RoleCreationRequest role, String token);
+
     boolean deleteRole(String realm, String clientUUID, String roleName, String token);
+
     List<Map<String, Object>> getAllRoles(String realm, String clientId, String token);
 
-   // Role assignment operations
-    void assignClientRolesToUser(
-            String realm,
-            String userId,
-            String clientUUID,
-            List<Map<String, Object>> rolesBody,
-            String token);
+    
 
-    // Assign roles by names - resolve IDs internally then assign
-   void assignClientRolesByName(
+    // Public API — client sends ROLE NAMES ONLY
+    void assignClientRolesByName(
             String realm,
             String username,
             String clientName,
             String token,
-            List<Map<String, Object>> roleNames
+            List<Map<String, Object>> rolesByName
     );
+
+
 
     // Signup operation
     SignupStatus signup(SignupRequest request, MultipartFile sourceZip);
 
-    //get all clients
+    // get all clients
     List<Map<String, Object>> getClientRoles(String realm, String clientName, String token);
 }
