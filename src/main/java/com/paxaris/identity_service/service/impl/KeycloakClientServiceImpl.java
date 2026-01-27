@@ -654,55 +654,73 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
     // ---------------- ROLE ASSIGN ----------------
    @Override
-public void assignClientRoles(
-        String realm,
-        String username,
-        String clientName,
-        String token,
-        List<Map<String, Object>> rolesBody
-) {
-    String userId = resolveUserId(realm, username, token);
-    String clientUUID = getClientUUID(realm, clientName, token);
+    public void assignClientRolesByName(
+            String realm,
+            String username,
+            String clientName,
+            String token,
+            List<Map<String, Object>> rolesByName) {
 
-    assignClientRolesToUser(
-            realm,
-            userId,
-            clientUUID,
-            rolesBody,
-            token
-    );
-}
+        // 1. Resolve user ID from username
+        String userId = resolveUserId(realm, username, token);
 
+        // 2. Resolve client UUID from clientName
+        String clientUUID = getClientUUID(realm, clientName, token);
 
- @Override
-public void assignClientRolesByName(String realm, String username, String clientName, String token, List<Map<String, Object>> rolesByName) {
-    // 1. Resolve userId
-    String userId = resolveUserId(realm, username, token);
-    // 2. Get client UUID
-    String clientUUID = getClientUUID(realm, clientName, token);
-    // 3. Get all client roles (with ids)
-    List<Map<String, Object>> allRoles = getClientRoles(realm, clientName, token);
-    
-    // 4. Build full role objects with ids by matching names
-    List<Map<String, Object>> rolesToAssign = new ArrayList<>();
-    for (Map<String, Object> roleNameMap : rolesByName) {
-        String roleName = (String) roleNameMap.get("name");
-        // Find role in allRoles with matching name
-        allRoles.stream()
-                .filter(r -> roleName.equals(r.get("name")))
-                .findFirst()
-                .ifPresent(rolesToAssign::add);
+        // 3. Fetch all client roles
+        List<Map<String, Object>> allRoles = getClientRoles(realm, clientUUID, token);
+
+        // 4. Match role names to full role objects (with id)
+        List<Map<String, Object>> rolesToAssign = new ArrayList<>();
+        for (Map<String, Object> roleNameMap : rolesByName) {
+            String roleName = (String) roleNameMap.get("name");
+            allRoles.stream()
+                    .filter(r -> roleName.equals(r.get("name")))
+                    .findFirst()
+                    .ifPresent(rolesToAssign::add);
+        }
+
+        if (rolesToAssign.isEmpty()) {
+            throw new RuntimeException("No valid roles found to assign for names: " + rolesByName);
+        }
+
+        // 5. Assign roles to user
+        assignClientRolesToUser(realm, userId, clientUUID, rolesToAssign, token);
     }
 
-    if (rolesToAssign.isEmpty()) {
-        throw new RuntimeException("No valid roles found to assign for names: " + rolesByName);
+    @Override
+    public void assignClientRolesToUser(
+            String realm,
+            String userId,
+            String clientUUID,
+            List<Map<String, Object>> rolesBody,
+            String token) {
+
+        String url = config.getBaseUrl()
+                + "/admin/realms/" + realm
+                + "/users/" + userId
+                + "/role-mappings/clients/" + clientUUID;
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(token);
+
+        HttpEntity<List<Map<String, Object>>> request = new HttpEntity<>(rolesBody, headers);
+
+        try {
+            ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
+
+            if (response.getStatusCode().is2xxSuccessful()) {
+                log.info("Successfully assigned client roles to user with ID '{}'", userId);
+            } else {
+                log.error("Failed to assign client roles. Status: {}", response.getStatusCode());
+                throw new RuntimeException("Failed to assign client roles. Status code: " + response.getStatusCode());
+            }
+        } catch (Exception e) {
+            log.error("Error assigning client roles to user with ID '{}': {}", userId, e.getMessage(), e);
+            throw new RuntimeException("Error assigning client roles", e);
+        }
     }
-
-    // 5. Call your existing assign method with full role objects
-    assignClientRolesToUser(realm, userId, clientUUID, rolesToAssign, token);
-}
-
-
     
     // ---------------- SIGNUP ----------------
     @Override
