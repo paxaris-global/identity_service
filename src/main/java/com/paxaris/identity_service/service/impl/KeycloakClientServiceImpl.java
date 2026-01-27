@@ -1114,4 +1114,24 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             throw new RuntimeException("Failed to fetch role ID: " + roleName, e);
         }
     }
+    private List<Map<String, Object>> getUserClientRoles(String realm, String userId, String clientUUID, String token) {
+    String url = config.getBaseUrl()
+            + "/admin/realms/" + realm
+            + "/users/" + userId
+            + "/role-mappings/clients/" + clientUUID;
+
+    HttpHeaders headers = new HttpHeaders();
+    headers.setBearerAuth(token);
+
+    try {
+        ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), String.class);
+        List<Map<String, Object>> assignedRoles = objectMapper.readValue(response.getBody(), new TypeReference<>() {});
+        log.info("Fetched assigned client roles for user '{}': {}", userId, assignedRoles);
+        return assignedRoles;
+    } catch (Exception e) {
+        log.error("Failed to fetch assigned roles for user '{}': {}", userId, e.getMessage(), e);
+        throw new RuntimeException("Failed to fetch assigned roles", e);
+    }
+}
+
 }
