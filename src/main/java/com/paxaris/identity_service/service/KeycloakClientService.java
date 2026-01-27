@@ -43,8 +43,19 @@ public interface KeycloakClientService {
     List<Map<String, Object>> getAllRoles(String realm, String clientId, String token);
 
     // Role assignment operations
-    void assignClientRole(String realm, String username, String clientName, String roleName, String token);
-    void assignClientRoleToUser(String realm, String userId, String clientUUID, String roleId, String roleName, String token);
+        void assignClientRoles(
+            String realm,
+            String username,
+            String clientName,
+            String token,
+            List<Map<String, Object>> rolesBody);
+
+    void assignClientRolesToUser(
+            String realm,
+            String userId,
+            String clientUUID,
+            List<Map<String, Object>> rolesBody,
+            String token);
 
     // Signup operation
     SignupStatus signup(SignupRequest request, MultipartFile sourceZip);
