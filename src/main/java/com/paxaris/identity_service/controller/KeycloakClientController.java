@@ -481,27 +481,31 @@ public class KeycloakClientController {
 
     // ------------------- ASSIGN ROLE -------------------
     // ------------------- ASSIGN CLIENT ROLE -------------------
-     @PostMapping("/{realm}/users/{username}/clients/{clientName}/roles/{roleName}")
-    public ResponseEntity<String> assignClientRoleToUser(
+       @PostMapping("/{realm}/users/{username}/clients/{clientName}/roles")
+    public ResponseEntity<String> assignClientRoles(
             @PathVariable String realm,
             @PathVariable String username,
             @PathVariable String clientName,
             @RequestHeader("Authorization") String authorizationHeader,
-            @PathVariable String roleName) {
+            @RequestBody List<Map<String, Object>> rolesBody) {
         try {
-            // Extract token from header
-            log.info(" in assignClientRoleToUser. token:" + authorizationHeader);
             String token = authorizationHeader.startsWith("Bearer ")
                     ? authorizationHeader.substring(7)
                     : authorizationHeader;
 
-            // Delegate to service
-            clientService.assignClientRole(realm, username, clientName, roleName, token);
+            clientService.assignClientRoles(
+                    realm,
+                    username,
+                    clientName,
+                    token,
+                    rolesBody);
 
-            return ResponseEntity.ok("Role assigned successfully");
+            return ResponseEntity.ok("Roles assigned successfully");
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Failed to assign role: " + e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body("Failed to assign roles: " + e.getMessage());
         }
     }
+
 
 }
