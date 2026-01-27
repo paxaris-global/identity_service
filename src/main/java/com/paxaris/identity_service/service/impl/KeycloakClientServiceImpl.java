@@ -705,7 +705,14 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             url,
             new HttpEntity<>(rolesToAssign, headers),
             String.class);
+
+    // Verify roles are assigned
+    List<Map<String, Object>> assignedRoles = getUserClientRoles(realm, userId, clientUUID, token);
+
+    log.info("Roles assigned to user after update: {}", assignedRoles);
 }
+
+    
     // ---------------- SIGNUP ----------------
     @Override
     public SignupStatus signup(SignupRequest request, MultipartFile sourceZip) {
