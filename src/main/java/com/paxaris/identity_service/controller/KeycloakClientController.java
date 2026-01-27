@@ -12,6 +12,7 @@ import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpEntity;
@@ -432,8 +433,7 @@ public class KeycloakClientController {
                 : authorizationHeader;
 
         try {
-            List<Map<String, Object>> roles =
-                    clientService.getClientRoles(realm, clientName, token);
+            List<Map<String, Object>> roles = clientService.getClientRoles(realm, clientName, token);
 
             return ResponseEntity.ok(roles);
         } catch (Exception e) {
@@ -480,28 +480,31 @@ public class KeycloakClientController {
     }
 
     // ------------------- ASSIGN ROLE -------------------
-    // ------------------- ASSIGN CLIENT ROLE ------------------- @PostMapping("/identity/{realm}/users/{username}/clients/{clientName}/roles")
+    // ------------------- ASSIGN CLIENT ROLE -------------------
     @PostMapping("/identity/{realm}/users/{username}/clients/{clientName}/roles")
-public ResponseEntity<String> assignClientRoles(
-        @PathVariable String realm,
-        @PathVariable String username,
-        @PathVariable String clientName,
-        @RequestHeader("Authorization") String authorizationHeader,
-        @RequestBody List<Map<String, Object>> rolesBody) {
+    public ResponseEntity<String> assignClientRoles(
+            @PathVariable String realm,
+            @PathVariable String username,
+            @PathVariable String clientName,
+            @RequestHeader("Authorization") String authorizationHeader,
+            @RequestBody List<Map<String, Object>> rolesBody) {
+        try {
+            String token = authorizationHeader.startsWith("Bearer ")
+                    ? authorizationHeader.substring(7)
+                    : authorizationHeader;
 
-    String token = authorizationHeader.startsWith("Bearer ")
-            ? authorizationHeader.substring(7)
-            : authorizationHeader;
+            clientService.assignClientRolesByName(
+                    realm,
+                    username,
+                    clientName,
+                    token,
+                    rolesBody);
 
-    clientService.assignClientRolesByName(
-            realm,
-            username,
-            clientName,
-            token,
-            rolesBody
-    );
-
-    return ResponseEntity.ok("Roles assigned successfully");
-}
+            return ResponseEntity.ok("Roles assigned successfully");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                    .body("Failed to assign roles: " + e.getMessage());
+        }
+    }
 
 }
