@@ -654,74 +654,50 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
     // ---------------- ROLE ASSIGN ----------------
    @Override
-    public void assignClientRolesByName(
-            String realm,
-            String username,
-            String clientName,
-            String token,
-            List<Map<String, Object>> rolesByName) {
+public void assignClientRolesByName(
+        String realm,
+        String username,
+        String clientName,
+        String token,
+        List<Map<String, Object>> roleNames
+) {
+    String userId = resolveUserId(realm, username, token);
+    String clientUUID = getClientUUID(realm, clientName, token);
 
-        // 1. Resolve user ID from username
-        String userId = resolveUserId(realm, username, token);
+    List<Map<String, Object>> rolesWithIds =
+            fetchClientRolesByName(realm, clientUUID, roleNames, token);
 
-        // 2. Resolve client UUID from clientName
-        String clientUUID = getClientUUID(realm, clientName, token);
+    assignClientRolesToUser(
+            realm,
+            userId,
+            clientUUID,
+            rolesWithIds,
+            token
+    );
+}
 
-        // 3. Fetch all client roles
-        List<Map<String, Object>> allRoles = getClientRoles(realm, clientUUID, token);
+   private void assignClientRolesToUser(
+        String realm,
+        String userId,
+        String clientUUID,
+        List<Map<String, Object>> roles,
+        String token
+) {
+    String url = config.getBaseUrl()
+            + "/admin/realms/" + realm
+            + "/users/" + userId
+            + "/role-mappings/clients/" + clientUUID;
 
-        // 4. Match role names to full role objects (with id)
-        List<Map<String, Object>> rolesToAssign = new ArrayList<>();
-        for (Map<String, Object> roleNameMap : rolesByName) {
-            String roleName = (String) roleNameMap.get("name");
-            allRoles.stream()
-                    .filter(r -> roleName.equals(r.get("name")))
-                    .findFirst()
-                    .ifPresent(rolesToAssign::add);
-        }
+    HttpHeaders headers = new HttpHeaders();
+    headers.setBearerAuth(token);
+    headers.setContentType(MediaType.APPLICATION_JSON);
 
-        if (rolesToAssign.isEmpty()) {
-            throw new RuntimeException("No valid roles found to assign for names: " + rolesByName);
-        }
-
-        // 5. Assign roles to user
-        assignClientRolesToUser(realm, userId, clientUUID, rolesToAssign, token);
-    }
-
-    @Override
-    public void assignClientRolesToUser(
-            String realm,
-            String userId,
-            String clientUUID,
-            List<Map<String, Object>> rolesBody,
-            String token) {
-
-        String url = config.getBaseUrl()
-                + "/admin/realms/" + realm
-                + "/users/" + userId
-                + "/role-mappings/clients/" + clientUUID;
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(token);
-
-        HttpEntity<List<Map<String, Object>>> request = new HttpEntity<>(rolesBody, headers);
-
-        try {
-            ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
-
-            if (response.getStatusCode().is2xxSuccessful()) {
-                log.info("Successfully assigned client roles to user with ID '{}'", userId);
-            } else {
-                log.error("Failed to assign client roles. Status: {}", response.getStatusCode());
-                throw new RuntimeException("Failed to assign client roles. Status code: " + response.getStatusCode());
-            }
-        } catch (Exception e) {
-            log.error("Error assigning client roles to user with ID '{}': {}", userId, e.getMessage(), e);
-            throw new RuntimeException("Error assigning client roles", e);
-        }
-    }
-    
+    restTemplate.postForEntity(
+            url,
+            new HttpEntity<>(roles, headers),
+            Void.class
+    );
+}  
     // ---------------- SIGNUP ----------------
     @Override
     public SignupStatus signup(SignupRequest request, MultipartFile sourceZip) {
