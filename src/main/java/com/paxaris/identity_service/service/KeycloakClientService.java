@@ -55,18 +55,23 @@ public interface KeycloakClientService {
 
     List<Map<String, Object>> getAllRoles(String realm, String clientId, String token);
 
-    
+    // Role assignment operations
 
-    // Public API — client sends ROLE NAMES ONLY
+    // Assign roles by full role objects (with IDs)
+    void assignClientRolesToUser(
+            String realm,
+            String userId,
+            String clientUUID,
+            List<Map<String, Object>> rolesBody,
+            String token);
+
+    // Assign roles by names - resolve IDs internally then assign
     void assignClientRolesByName(
             String realm,
             String username,
             String clientName,
             String token,
-            List<Map<String, Object>> rolesByName
-    );
-
-
+            List<Map<String, Object>> rolesByName);
 
     // Signup operation
     SignupStatus signup(SignupRequest request, MultipartFile sourceZip);
