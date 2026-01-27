@@ -698,6 +698,47 @@ public void assignClientRolesByName(
             Void.class
     );
 }  
+
+    private List<Map<String, Object>> fetchClientRolesByName(
+        String realm,
+        String clientUUID,
+        List<Map<String, Object>> roleNames,
+        String token
+) {
+    String url = config.getBaseUrl()
+            + "/admin/realms/" + realm
+            + "/clients/" + clientUUID
+            + "/roles";
+
+    HttpHeaders headers = new HttpHeaders();
+    headers.setBearerAuth(token);
+
+    ResponseEntity<List> response = restTemplate.exchange(
+            url,
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            List.class
+    );
+
+    List<Map<String, Object>> allRoles = response.getBody();
+    List<Map<String, Object>> resolvedRoles = new ArrayList<>();
+
+    for (Map<String, Object> role : roleNames) {
+        String roleName = role.get("name").toString();
+
+        allRoles.stream()
+                .filter(r -> roleName.equals(r.get("name")))
+                .findFirst()
+                .ifPresent(resolvedRoles::add);
+    }
+
+    if (resolvedRoles.isEmpty()) {
+        throw new RuntimeException("No matching client roles found");
+    }
+
+    return resolvedRoles;
+}
+
     // ---------------- SIGNUP ----------------
     @Override
     public SignupStatus signup(SignupRequest request, MultipartFile sourceZip) {
