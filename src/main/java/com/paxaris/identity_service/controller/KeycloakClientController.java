@@ -481,31 +481,31 @@ public class KeycloakClientController {
 
     // ------------------- ASSIGN ROLE -------------------
     // ------------------- ASSIGN CLIENT ROLE -------------------
-       @PostMapping("/identity/{realm}/users/{username}/clients/{clientName}/roles")
-    public ResponseEntity<String> assignClientRoles(
-            @PathVariable String realm,
-            @PathVariable String username,
-            @PathVariable String clientName,
-            @RequestHeader("Authorization") String authorizationHeader,
-            @RequestBody List<Map<String, Object>> rolesBody) {
-        try {
-            String token = authorizationHeader.startsWith("Bearer ")
-                    ? authorizationHeader.substring(7)
-                    : authorizationHeader;
+@PostMapping("/identity/{realm}/users/{username}/clients/{clientName}/roles")
+public ResponseEntity<String> assignClientRoles(
+        @PathVariable String realm,
+        @PathVariable String username,
+        @PathVariable String clientName,
+        @RequestHeader("Authorization") String authorizationHeader,
+        @RequestBody List<Map<String, Object>> rolesBody) {
+    try {
+        String token = authorizationHeader.startsWith("Bearer ")
+                ? authorizationHeader.substring(7)
+                : authorizationHeader;
 
-            clientService.assignClientRoles(
-                    realm,
-                    username,
-                    clientName,
-                    token,
-                    rolesBody);
+        clientService.assignClientRolesByName(
+                realm,
+                username,
+                clientName,
+                token,
+                rolesBody);
 
-            return ResponseEntity.ok("Roles assigned successfully");
-        } catch (Exception e) {
-            return ResponseEntity.badRequest()
-                    .body("Failed to assign roles: " + e.getMessage());
-        }
+        return ResponseEntity.ok("Roles assigned successfully");
+    } catch (Exception e) {
+        return ResponseEntity.badRequest()
+                .body("Failed to assign roles: " + e.getMessage());
     }
+}
 
 
 }
