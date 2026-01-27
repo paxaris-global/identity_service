@@ -672,45 +672,26 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
     }
 
     @Override
-    public void assignClientRolesToUser(
-        String realm,
-        String userId,
-        String clientUUID,
-        List<Map<String, Object>> rolesBody,
-        String token) {
+ public void assignClientRolesToUser(
+            String realm,
+            String userId,
+            String clientUUID,
+            List<Map<String, Object>> rolesBody,
+            String token) {
+        String url = config.getBaseUrl()
+                + "/admin/realms/" + realm
+                + "/users/" + userId
+                + "/role-mappings/clients/" + clientUUID;
 
-    List<Map<String, Object>> rolesToAssign = new ArrayList<>();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
 
-    for (Map<String, Object> roleMap : rolesBody) {
-        String roleName = roleMap.get("name").toString();
-        String roleId = getClientRoleId(realm, clientUUID, roleName, token);
-
-        Map<String, Object> roleObj = new HashMap<>();
-        roleObj.put("id", roleId);
-        roleObj.put("name", roleName);
-
-        rolesToAssign.add(roleObj);
+        restTemplate.postForEntity(
+                url,
+                new HttpEntity<>(rolesBody, headers),
+                String.class);
     }
-
-    String url = config.getBaseUrl()
-            + "/admin/realms/" + realm
-            + "/users/" + userId
-            + "/role-mappings/clients/" + clientUUID;
-
-    HttpHeaders headers = new HttpHeaders();
-    headers.setBearerAuth(token);
-    headers.setContentType(MediaType.APPLICATION_JSON);
-
-    restTemplate.postForEntity(
-            url,
-            new HttpEntity<>(rolesToAssign, headers),
-            String.class);
-
-    // Verify roles are assigned
-    List<Map<String, Object>> assignedRoles = getUserClientRoles(realm, userId, clientUUID, token);
-
-    log.info("Roles assigned to user after update: {}", assignedRoles);
-}
 
     
     // ---------------- SIGNUP ----------------
@@ -1114,24 +1095,5 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             throw new RuntimeException("Failed to fetch role ID: " + roleName, e);
         }
     }
-    private List<Map<String, Object>> getUserClientRoles(String realm, String userId, String clientUUID, String token) {
-    String url = config.getBaseUrl()
-            + "/admin/realms/" + realm
-            + "/users/" + userId
-            + "/role-mappings/clients/" + clientUUID;
-
-    HttpHeaders headers = new HttpHeaders();
-    headers.setBearerAuth(token);
-
-    try {
-        ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), String.class);
-        List<Map<String, Object>> assignedRoles = objectMapper.readValue(response.getBody(), new TypeReference<>() {});
-        log.info("Fetched assigned client roles for user '{}': {}", userId, assignedRoles);
-        return assignedRoles;
-    } catch (Exception e) {
-        log.error("Failed to fetch assigned roles for user '{}': {}", userId, e.getMessage(), e);
-        throw new RuntimeException("Failed to fetch assigned roles", e);
-    }
-}
 
 }
