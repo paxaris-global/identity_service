@@ -654,40 +654,44 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
     // ---------------- ROLE ASSIGN ----------------
     @Override
-    public void assignClientRole(String realm, String username, String clientName, String roleName, String token) {
-        // Resolve IDs automatically
+    public void assignClientRoles(
+            String realm,
+            String username,
+            String clientName,
+            String token,
+            List<Map<String, Object>> rolesBody) {
         String userId = resolveUserId(realm, username, token);
         String clientUUID = getClientUUID(realm, clientName, token);
-        String roleId = getClientRoleId(realm, clientUUID, roleName, token);
 
-        // Perform assignment
-        assignClientRoleToUser(realm, userId, clientUUID, roleId, roleName, token);
+        assignClientRolesToUser(
+                realm,
+                userId,
+                clientUUID,
+                rolesBody,
+                token);
     }
 
     @Override
-    public void assignClientRoleToUser(String realm, String userId, String clientUUID, String roleId, String roleName,
+    public void assignClientRolesToUser(
+            String realm,
+            String userId,
+            String clientUUID,
+            List<Map<String, Object>> rolesBody,
             String token) {
-        String url = config.getBaseUrl() + "/admin/realms/" + realm + "/users/" + userId + "/role-mappings/clients/"
-                + clientUUID;
+        String url = config.getBaseUrl()
+                + "/admin/realms/" + realm
+                + "/users/" + userId
+                + "/role-mappings/clients/" + clientUUID;
 
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
 
-        // Prepare role payload
-        List<Map<String, Object>> roles = List.of(Map.of(
-                "id", roleId,
-                "name", roleName));
-
-        try {
-            restTemplate.postForEntity(url, new HttpEntity<>(roles, headers), String.class);
-            log.info("Assigned role '{}' to user '{}' in client '{}'", roleName, userId, clientUUID);
-        } catch (Exception e) {
-            log.error("Failed to assign role '{}' to user '{}': {}", roleName, userId, e.getMessage(), e);
-            throw new RuntimeException("Failed to assign client role: " + e.getMessage(), e);
-        }
+        restTemplate.postForEntity(
+                url,
+                new HttpEntity<>(rolesBody, headers),
+                String.class);
     }
-
     // ---------------- SIGNUP ----------------
     @Override
     public SignupStatus signup(SignupRequest request, MultipartFile sourceZip) {
