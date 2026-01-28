@@ -332,21 +332,8 @@ public class KeycloakClientController {
         boolean publicClient = Boolean.parseBoolean(
                 clientRequest.getOrDefault("publicClient", "true").toString());
 
-        // Extract URLs list if present, otherwise empty list
-        List<String> urls = new ArrayList<>();
-        if (clientRequest.containsKey("urls")) {
-            Object urlsObj = clientRequest.get("urls");
-            if (urlsObj instanceof List<?>) {
-                for (Object url : (List<?>) urlsObj) {
-                    if (url != null) {
-                        urls.add(url.toString());
-                    }
-                }
-            }
-        }
-
         try {
-            String clientUUID = clientService.createClient(realm, clientId, publicClient, masterToken, urls);
+            String clientUUID = clientService.createClient(realm, clientId, publicClient, masterToken);
             return ResponseEntity.ok("Client created successfully with UUID: " + clientUUID);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
