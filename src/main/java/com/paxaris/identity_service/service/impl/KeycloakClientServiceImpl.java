@@ -2,8 +2,6 @@ package com.paxaris.identity_service.service.impl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-// import com.paxaris.identity_service.service.DockerHubService;
-// import com.paxaris.identity_service.service.DockerBuildService;
 import com.paxaris.identity_service.dto.*;
 import com.paxaris.identity_service.service.KeycloakClientService;
 import com.paxaris.identity_service.service.ProvisioningService;
@@ -39,8 +37,6 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
     private final ProvisioningService provisioningService;
-    // private final DockerHubService dockerHubService;
-    // private final DockerBuildService dockerBuildService;
     @Value("${project.management.base-url}")
     private String projectManagementBaseUrl;
     @Value("${docker.hub.username}")
@@ -320,11 +316,11 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
     // ---------------- CLIENT ----------------
     @Override
-    public String createClient(String realm, String clientId, boolean isPublicClient, String token) {
-        // Correct Keycloak admin URL
+    public String createClient(String realm, String clientId, boolean isPublicClient, String token, List<String> urls) {
+        // Keycloak admin URL to create client
         String url = config.getBaseUrl() + "/admin/realms/" + realm + "/clients";
 
-        // Build request body
+        // Build request body for Keycloak client creation
         Map<String, Object> body = new HashMap<>();
         body.put("clientId", clientId);
         body.put("enabled", true);
@@ -343,14 +339,14 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             body.put("serviceAccountsEnabled", true);
         }
 
-        // Set headers
+        // Set headers with bearer token
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(token);
 
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
 
-        // Make REST call to Keycloak
+        // Call Keycloak to create client
         ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
 
         if (!response.getStatusCode().is2xxSuccessful()) {
@@ -360,13 +356,17 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         // Get client UUID after creation
         String clientUUID = getClientUUID(realm, clientId, token);
 
-        // Sync client info to project manager if URL is configured
+        // Sync client info to project manager if URL configured
         if (projectManagementBaseUrl == null || projectManagementBaseUrl.isEmpty()) {
             log.warn("Project Management Base URL is not configured, skipping project manager update");
         } else {
-            Map<String, String> clientData = new HashMap<>();
+            // Prepare payload for project manager with clientName same as clientId and URLs
+            // list
+            Map<String, Object> clientData = new HashMap<>();
             clientData.put("realmName", realm);
             clientData.put("clientId", clientId);
+            clientData.put("clientName", clientId); // clientName same as clientId
+            clientData.put("urls", urls != null ? urls : Collections.emptyList());
 
             WebClient webClient = WebClient.builder()
                     .baseUrl(projectManagementBaseUrl)
@@ -381,12 +381,11 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
                         .block();
                 log.info("Project info sent to Project Management Service for client '{}'", clientId);
             } catch (Exception e) {
-                log.error("Failed to sync client info to Project Management Service: {}", e.getMessage());
+                log.error("Failed to sync client info to Project Management Service: {}", e.getMessage(), e);
             }
         }
 
         return clientUUID;
-
     }
 
     @Override
@@ -847,7 +846,19 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             // Step 3: Create Client
             status.addStep("Create Client", "IN_PROGRESS", "Creating Keycloak client: " + clientId);
             log.info("🧩 Step 3: Creating client '{}'", clientId);
-            String clientUUID = createClient(realm, clientId, request.isPublicClient(), masterToken);
+
+            // Prepare URLs list from request
+            List<String> urls = new ArrayList<>();
+            if (request.getUrl() != null && !request.getUrl().isEmpty()) {
+                urls.add(request.getUrl());
+            }
+            if (request.getUri() != null && !request.getUri().isEmpty()) {
+                urls.add(request.getUri());
+            }
+
+            // Call createClient with URLs
+            String clientUUID = createClient(realm, clientId, request.isPublicClient(), masterToken, urls);
+
             status.addStep("Create Client", "SUCCESS",
                     "Client '" + clientId + "' created successfully with UUID: " + clientUUID);
 
