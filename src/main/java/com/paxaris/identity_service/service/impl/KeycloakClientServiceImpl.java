@@ -497,6 +497,16 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         headers.setContentType(MediaType.APPLICATION_JSON);
 
         List<String> failedRoles = new ArrayList<>();
+
+        WebClient webClient = null;
+        if (projectManagementBaseUrl != null && !projectManagementBaseUrl.isEmpty()) {
+            webClient = WebClient.builder()
+                    .baseUrl(projectManagementBaseUrl)
+                    .build();
+        } else {
+            log.warn("Project Management Base URL is not configured, skipping project manager update");
+        }
+
         for (RoleCreationRequest role : roleRequests) {
             Map<String, Object> body = Map.of(
                     "name", role.getName(),
@@ -504,6 +514,37 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             try {
                 restTemplate.postForEntity(url, new HttpEntity<>(body, headers), String.class);
                 log.info("Role '{}' created successfully.", role.getName());
+
+                // Send to Project Management Service if configured
+                if (webClient != null) {
+                    RoleRequest roleRequest = new RoleRequest();
+                    roleRequest.setRealmName(realm);
+                    roleRequest.setProductName(clientName);
+                    roleRequest.setRoleName(role.getName());
+
+                    UrlEntry urlEntry = new UrlEntry();
+                    urlEntry.setUrl(role.getUrl());
+                    urlEntry.setUri(role.getUri());
+
+                    roleRequest.setUrls(List.of(urlEntry));
+
+                    try {
+                        webClient.post()
+                                .uri("/project/roles/save-or-update")
+                                .bodyValue(roleRequest)
+                                .retrieve()
+                                .toBodilessEntity()
+                                .block();
+                        log.info("Project Management Service updated for role '{}'", role.getName());
+                    } catch (Exception e) {
+                        log.error("Failed to update Project Management Service for role '{}': {}", role.getName(),
+                                e.getMessage());
+                        // You can choose to add role name to failedRoles or handle separately
+                    }
+                }
+
+                // Optionally save to DB here as well if needed
+
             } catch (Exception e) {
                 failedRoles.add(role.getName());
                 log.error("Failed to create role '{}': {}", role.getName(), e.getMessage());
