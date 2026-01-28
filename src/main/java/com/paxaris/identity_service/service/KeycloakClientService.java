@@ -27,7 +27,7 @@ public interface KeycloakClientService {
         List<Map<String, Object>> getAllRealms(String token);
 
         // Client operations
-        String createClient(String realm, String clientId, boolean isPublicClient, String token, List<String> urls);
+        String createClient(String realm, String clientId, boolean isPublicClient, String token);
 
         List<Map<String, Object>> getAllClients(String realm, String token);
 
