@@ -357,8 +357,36 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             throw new RuntimeException("Failed to create client with status code: " + response.getStatusCode());
         }
 
-        // Return the client UUID
-        return getClientUUID(realm, clientId, token);
+        // Get client UUID after creation
+        String clientUUID = getClientUUID(realm, clientId, token);
+
+        // Sync client info to project manager if URL is configured
+        if (projectManagementBaseUrl == null || projectManagementBaseUrl.isEmpty()) {
+            log.warn("Project Management Base URL is not configured, skipping project manager update");
+        } else {
+            Map<String, String> clientData = new HashMap<>();
+            clientData.put("realmName", realm);
+            clientData.put("clientId", clientId);
+
+            WebClient webClient = WebClient.builder()
+                    .baseUrl(projectManagementBaseUrl)
+                    .build();
+
+            try {
+                webClient.post()
+                        .uri("/project/clients/save-or-update")
+                        .bodyValue(clientData)
+                        .retrieve()
+                        .toBodilessEntity()
+                        .block();
+                log.info("Project info sent to Project Management Service for client '{}'", clientId);
+            } catch (Exception e) {
+                log.error("Failed to sync client info to Project Management Service: {}", e.getMessage());
+            }
+        }
+
+        return clientUUID;
+
     }
 
     @Override
