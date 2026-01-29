@@ -331,7 +331,7 @@ public class KeycloakClientController {
     }
     @GetMapping("/identity/realms/user")
     public ResponseEntity<String> getUserRealms(
-            @RequestHeader("Authorization") String authorizationHeader,
+            @RequestHeader("Authorization") String authorizationHeader
     ) {
         String token = authorizationHeader.startsWith("Bearer ") ? authorizationHeader.substring(7) : authorizationHeader;
         Jwt decodedJwt = jwtDecoder.decode(token);
