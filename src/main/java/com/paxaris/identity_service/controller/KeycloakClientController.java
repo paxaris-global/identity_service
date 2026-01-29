@@ -338,7 +338,7 @@ public class KeycloakClientController {
         Map<String, Object> claims = decodedJwt.getClaims();
         try {
             String realmName = claims.get("azp") instanceof String
-                    ? String claims.get("azp")
+                    ? (String) claims.get("azp")
                     : "";
             return ResponseEntity.ok(realmName);
         } catch (Exception e) {
