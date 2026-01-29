@@ -367,6 +367,28 @@ public class KeycloakClientController {
         }
     }
 
+    // ---------------------------------get all clients
+
+    @GetMapping("/identity/clients/{realm}")
+    public ResponseEntity<List<Map<String, Object>>> getAllClients(
+            @PathVariable String realm,
+            @RequestHeader("Authorization") String authorizationHeader) {
+
+        String token = authorizationHeader.startsWith("Bearer ")
+                ? authorizationHeader.substring(7)
+                : authorizationHeader;
+
+        try {
+            return ResponseEntity.ok(clientService.getAllClients(realm, token));
+        } catch (HttpClientErrorException.Unauthorized e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        } catch (HttpClientErrorException.Forbidden e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        } catch (Exception e) {
+            log.error("Failed to get clients for realm '{}': {}", realm, e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
     // -------------------------------------------------------------------------------------------------------------------------------------------
     @GetMapping("/client/{realm}/{clientName}/uuid")
     public ResponseEntity<String> getClientUUID(
@@ -383,16 +405,7 @@ public class KeycloakClientController {
     }
 
     // ------------------------------------------------------------------------------------------------------------------------------------------------------------
-    @GetMapping("/clients/{realm}")
-    public ResponseEntity<List<Map<String, Object>>> getAllClients(@PathVariable String realm) {
-        try {
-            String masterToken = clientService.getMyRealmToken("admin", "admin123", "admin-cli", "master")
-                    .get("access_token").toString();
-            return ResponseEntity.ok(clientService.getAllClients(realm, masterToken));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
-        }
-    }
+  
 
     // ------------------- USER -------------------
     @PostMapping("/identity/{realm}/users")
