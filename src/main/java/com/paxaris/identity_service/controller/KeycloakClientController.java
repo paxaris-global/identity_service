@@ -49,6 +49,16 @@ public class KeycloakClientController {
     private static final Logger logger = LoggerFactory.getLogger(KeycloakClientController.class);
 
     // ------------------- TOKEN
+    @GetMapping("identity/master/login")
+    public ResponseEntity<Map<String, String>> getMasterTokenInternally() {
+        String token = clientService.getMasterTokenInternally();
+
+        Map<String, String> response = new HashMap<>();
+        response.put("access_token", token);
+
+        return ResponseEntity.ok(response);
+    }
+
     // ----------------------------------------------------------------------------------------------------------------------------
     @PostMapping("/token")
     public ResponseEntity<Map<String, Object>> getToken(
