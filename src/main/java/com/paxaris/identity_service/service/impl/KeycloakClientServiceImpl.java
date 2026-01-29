@@ -1150,7 +1150,7 @@ private void logCurlCommand(String realm, String userId, String clientUUID,
     // }
 
 private String resolveUserId(String realm, String username, String token) {
-    log.info("Resolving user IDs for username '{}' in realm '{}'", username, realm);
+    log.info("Resolving user ID for username '{}' in realm '{}'", username, realm);
     String url = config.getBaseUrl() + "/admin/realms/" + realm + "/users?username=" + username;
     HttpHeaders headers = new HttpHeaders();
     headers.setBearerAuth(token);
@@ -1158,28 +1158,27 @@ private String resolveUserId(String realm, String username, String token) {
     try {
         ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers),
                 String.class);
-
         List<Map<String, Object>> users = objectMapper.readValue(response.getBody(), new TypeReference<>() {});
 
-        if (users.isEmpty()) {
-            log.error("User not found: {}", username);
-            throw new RuntimeException("User not found: " + username);
+        log.info("Users returned from Keycloak for username query '{}': {}", username, users);
+
+        // Filter for exact username match, case-insensitive
+        List<Map<String, Object>> exactMatches = users.stream()
+            .filter(u -> username.equalsIgnoreCase((String) u.get("username")))
+            .collect(Collectors.toList());
+
+        if (exactMatches.isEmpty()) {
+            log.error("No exact match found for username '{}'", username);
+            throw new RuntimeException("User not found with exact username: " + username);
         }
 
-        // Print all user IDs found
-        List<String> userIds = new ArrayList<>();
-        for (Map<String, Object> user : users) {
-            String id = (String) user.get("id");
-            String uname = (String) user.get("username");
-            log.info("Found user with username '{}' and ID '{}'", uname, id);
-            userIds.add(id);
+        if (exactMatches.size() > 1) {
+            log.warn("Multiple exact matches found for username '{}', picking the first", username);
         }
 
-        // Return the first ID as before
-        String userId = userIds.get(0);
-        log.info("Resolved user ID: '{}' for username '{}'", userId, username);
+        String userId = (String) exactMatches.get(0).get("id");
+        log.info("Resolved exact user ID: '{}' for username '{}'", userId, username);
         return userId;
-
     } catch (Exception e) {
         log.error("Failed to resolve user UUID for '{}': {}", username, e.getMessage(), e);
         throw new RuntimeException("Failed to resolve user UUID for: " + username, e);
