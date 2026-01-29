@@ -82,6 +82,11 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             throw new RuntimeException("Failed to connect to Keycloak token endpoint.", e);
         }
     }
+ @Override
+    public String getMasterTokenInternally() {
+        return getMasterToken();
+    }
+    
 
     @Override
     public Map<String, Object> getRealmToken(String realm,
