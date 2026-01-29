@@ -1,8 +1,9 @@
 package com.paxaris.identity_service.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.paxaris.identity_service.dto.AssignRoleRequest;
 import com.paxaris.identity_service.dto.RoleCreationRequest;
-
+import com.paxaris.identity_service.dto.RoleRequest;
 import com.paxaris.identity_service.dto.SignupRequest;
 import com.paxaris.identity_service.dto.UrlEntry;
 import com.paxaris.identity_service.service.DynamicJwtDecoder;
@@ -480,31 +481,26 @@ public class KeycloakClientController {
     }
 
     // ------------------- ASSIGN ROLE -------------------
-    // ------------------- ASSIGN CLIENT ROLE -------------------
-    @PostMapping("/identity/{realm}/users/{username}/clients/{clientName}/roles")
+    @PostMapping("/realms/{realm}/users/{username}/clients/{clientName}/roles")
     public ResponseEntity<String> assignClientRoles(
             @PathVariable String realm,
             @PathVariable String username,
             @PathVariable String clientName,
             @RequestHeader("Authorization") String authorizationHeader,
-            @RequestBody List<Map<String, Object>> rolesBody) {
-        try {
-            String token = authorizationHeader.startsWith("Bearer ")
-                    ? authorizationHeader.substring(7)
-                    : authorizationHeader;
+            @RequestBody List<AssignRoleRequest> rolesBody) {
 
-            clientService.assignClientRolesByName(
-                    realm,
-                    username,
-                    clientName,
-                    token,
-                    rolesBody);
+        String token = authorizationHeader.startsWith("Bearer ")
+                ? authorizationHeader.substring(7)
+                : authorizationHeader;
 
-            return ResponseEntity.ok("Roles assigned successfully");
-        } catch (Exception e) {
-            return ResponseEntity.badRequest()
-                    .body("Failed to assign roles: " + e.getMessage());
-        }
+        clientService.assignClientRolesByName(
+                realm,
+                username,
+                clientName,
+                token, 
+                rolesBody);
+
+        return ResponseEntity.ok("Client roles assigned successfully");
     }
 
 }
