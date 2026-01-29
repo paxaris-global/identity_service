@@ -481,7 +481,7 @@ public class KeycloakClientController {
     }
 
     // ------------------- ASSIGN ROLE -------------------
-    @PostMapping("/{realm}/users/{username}/clients/{clientName}/roles")
+    @PostMapping("identity/{realm}/users/{username}/clients/{clientName}/roles")
     public ResponseEntity<String> assignClientRoles(
             @PathVariable String realm,
             @PathVariable String username,
