@@ -11,7 +11,8 @@ import java.util.List;
 import java.util.Map;
 
 public interface KeycloakClientService {
-
+        
+        String getMasterTokenInternally();
         // Token operations
         Map<String, Object> getMyRealmToken(String username, String password, String clientId, String realm);
 
