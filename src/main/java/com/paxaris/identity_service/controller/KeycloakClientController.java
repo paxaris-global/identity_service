@@ -392,15 +392,20 @@ public class KeycloakClientController {
 
     // -----------------------------------------------------------------------------------------------------------------------------------------------------
     @GetMapping("identity/users/{realm}")
-    public ResponseEntity<List<Map<String, Object>>> getAllUsers(@PathVariable String realm) {
-        try {
-            String masterToken = clientService.getMyRealmToken("admin", "admin123", "admin-cli", "master")
-                    .get("access_token").toString();
-            return ResponseEntity.ok(clientService.getAllUsers(realm, masterToken));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
-        }
+public ResponseEntity<List<Map<String, Object>>> getAllUsers(
+        @PathVariable String realm,
+        @RequestHeader("Authorization") String authorizationHeader) {
+
+    String token = authorizationHeader.startsWith("Bearer ") ? authorizationHeader.substring(7) : authorizationHeader;
+
+    try {
+        List<Map<String, Object>> users = clientService.getAllUsers(realm, token);
+        return ResponseEntity.ok(users);
+    } catch (Exception e) {
+        return ResponseEntity.badRequest().build();
     }
+}
+
 
     // ------------------- ROLE -------------------
     @PostMapping("/identity/{realm}/clients/{clientName}/roles")
