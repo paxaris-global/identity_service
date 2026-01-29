@@ -693,42 +693,68 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
     // ---------------- ROLE ASSIGN ----------------
     @Override
-    public void assignClientRolesByName(
-            String realm,
-            String username,
-            String clientName,
-            String token,
-            List<AssignRoleRequest> roles) {
+public void assignClientRolesByName(
+        String realm,
+        String username,
+        String clientName,
+        String token,
+        List<AssignRoleRequest> roles) {
 
-        // 1️⃣ Resolve userId from username
-        String userId = resolveUserId(realm, username, token);
+    // 1️⃣ Resolve userId from username
+    String userId = resolveUserId(realm, username, token);
 
-        // 2️⃣ Resolve client UUID from clientName
-        String clientUUID = resolveClientUUID(realm, clientName, token);
+    // 2️⃣ Resolve client UUID from clientName
+    String clientUUID = resolveClientUUID(realm, clientName, token);
 
-        // 3️⃣ Resolve each role by name → minimal payload (id + name)
-        List<Map<String, Object>> resolvedRoles = new ArrayList<>();
+    // 3️⃣ Resolve each role by name → minimal payload (id + name)
+    List<Map<String, Object>> resolvedRoles = new ArrayList<>();
 
-        for (AssignRoleRequest role : roles) {
-            if (role.getName() == null || role.getName().isBlank()) {
-                throw new IllegalArgumentException("Role name must not be null or empty");
-            }
-
-            Map<String, Object> resolvedRole = resolveClientRoleByName(realm, clientUUID, role.getName(), token);
-
-            resolvedRoles.add(resolvedRole);
+    for (AssignRoleRequest role : roles) {
+        if (role.getName() == null || role.getName().isBlank()) {
+            throw new IllegalArgumentException("Role name must not be null or empty");
         }
 
-        // 4️⃣ Assign resolved roles to user
-        assignClientRolesToUser(realm, userId, clientUUID, resolvedRoles, token);
-
-        log.info(
-                "✅ Successfully assigned roles {} to user '{}' in realm '{}' for client '{}'",
-                resolvedRoles.stream().map(r -> r.get("name")).toList(),
-                username,
-                realm,
-                clientName);
+        Map<String, Object> resolvedRole = resolveClientRoleByName(realm, clientUUID, role.getName(), token);
+        resolvedRoles.add(resolvedRole);
     }
+
+    // 4️⃣ Assign resolved roles to user
+    assignClientRolesToUser(realm, userId, clientUUID, resolvedRoles, token);
+
+    // 5️⃣ Log cURL command for debugging
+    logCurlCommand(realm, userId, clientUUID, resolvedRoles, token);
+
+    log.info(
+            "✅ Successfully assigned roles {} to user '{}' in realm '{}' for client '{}'",
+            resolvedRoles.stream().map(r -> r.get("name")).toList(),
+            username,
+            realm,
+            clientName);
+}
+
+private void logCurlCommand(String realm, String userId, String clientUUID,
+                            List<Map<String, Object>> roles, String token) {
+
+    String url = config.getBaseUrl()
+            + "/admin/realms/" + realm
+            + "/users/" + userId
+            + "/role-mappings/clients/" + clientUUID;
+
+    // Convert roles list to JSON string (pretty print optional)
+    String rolesJson;
+    try {
+        rolesJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(roles);
+    } catch (Exception e) {
+        rolesJson = roles.toString();
+    }
+
+    String curl = "curl --location '" + url + "' \\\n"
+            + "  --header 'Content-Type: application/json' \\\n"
+            + "  --header 'Authorization: Bearer " + token + "' \\\n"
+            + "  --data-raw '" + rolesJson.replace("'", "\\'") + "'";
+
+    log.info("🔹 Equivalent cURL command to assign roles:\n{}", curl);
+}
 
     private String resolveClientUUID(String realm, String clientName, String token) {
         String url = config.getBaseUrl()
