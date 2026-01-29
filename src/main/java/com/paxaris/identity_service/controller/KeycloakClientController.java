@@ -329,7 +329,22 @@ public class KeycloakClientController {
             return ResponseEntity.badRequest().build();
         }
     }
-
+    @GetMapping("/identity/realms/user")
+    public ResponseEntity<String> getUserRealms(
+            @RequestHeader("Authorization") String authorizationHeader,
+    ) {
+        String token = authorizationHeader.startsWith("Bearer ") ? authorizationHeader.substring(7) : authorizationHeader;
+        Jwt decodedJwt = jwtDecoder.decode(token);
+        Map<String, Object> claims = decodedJwt.getClaims();
+        try {
+            String realmName = claims.get("azp") instanceof String
+                    ? String claims.get("azp")
+                    : "";
+            return ResponseEntity.ok(realmName);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
     // ------------------- CLIENT -------------------
     @PostMapping("/identity/{realm}/clients")
     public ResponseEntity<String> createClient(
