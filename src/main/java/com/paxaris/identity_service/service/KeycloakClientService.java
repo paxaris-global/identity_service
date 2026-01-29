@@ -1,6 +1,8 @@
 package com.paxaris.identity_service.service;
 
+import com.paxaris.identity_service.dto.AssignRoleRequest;
 import com.paxaris.identity_service.dto.RoleCreationRequest;
+import com.paxaris.identity_service.dto.RoleRequest;
 import com.paxaris.identity_service.dto.SignupRequest;
 import com.paxaris.identity_service.dto.SignupStatus;
 import org.springframework.web.multipart.MultipartFile;
@@ -57,21 +59,12 @@ public interface KeycloakClientService {
 
         // Role assignment operations
 
-        // Assign roles by full role objects (with IDs)
-        void assignClientRolesToUser(
-                        String realm,
-                        String userId,
-                        String clientUUID,
-                        List<Map<String, Object>> rolesBody,
-                        String token);
-
-        // Assign roles by names - resolve IDs internally then assign
         void assignClientRolesByName(
                         String realm,
                         String username,
                         String clientName,
                         String token,
-                        List<Map<String, Object>> rolesByName);
+                        List<AssignRoleRequest> roles);
 
         // Signup operation
         SignupStatus signup(SignupRequest request, MultipartFile sourceZip);
