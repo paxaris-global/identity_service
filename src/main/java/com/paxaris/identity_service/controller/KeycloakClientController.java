@@ -391,7 +391,7 @@ public class KeycloakClientController {
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------------------------
-    @GetMapping("identity/users/{realm}/")
+    @GetMapping("identity/users/{realm}")
     public ResponseEntity<List<Map<String, Object>>> getAllUsers(@PathVariable String realm) {
         try {
             String masterToken = clientService.getMyRealmToken("admin", "admin123", "admin-cli", "master")
