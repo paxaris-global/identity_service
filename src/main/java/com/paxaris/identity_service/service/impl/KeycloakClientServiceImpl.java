@@ -698,104 +698,92 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             String username,
             String clientName,
             String token,
-            List<Map<String, Object>> rolesByName) {
+            List<AssignRoleRequest> roles) {
 
-        // 1️⃣ Resolve userId
+        // 1️⃣ Resolve userId from username
         String userId = resolveUserId(realm, username, token);
 
-        // 2️⃣ Resolve client UUID
-        String clientUUID = getClientUUID(realm, clientName, token);
+        // 2️⃣ Resolve client UUID from clientName
+        String clientUUID = resolveClientUUID(realm, clientName, token);
 
-        // 3️⃣ Fetch role IDs for requested roles
-        List<String> roleIds = fetchClientRoleIdsByName(realm, clientUUID, rolesByName, token);
+        // 3️⃣ Resolve each role by name → minimal payload (id + name)
+        List<Map<String, Object>> resolvedRoles = new ArrayList<>();
 
-        // 4️⃣ Convert role IDs into the format Keycloak expects (list of maps with id
-        // and name)
-        List<Map<String, Object>> rolesWithIdAndName = getRoleDetailsByIds(realm, clientUUID, roleIds, token);
+        for (AssignRoleRequest role : roles) {
+            if (role.getName() == null || role.getName().isBlank()) {
+                throw new IllegalArgumentException("Role name must not be null or empty");
+            }
 
-        // 5️⃣ Assign roles to user
-        assignClientRolesToUser(realm, userId, clientUUID, rolesWithIdAndName, token);
+            Map<String, Object> resolvedRole = resolveClientRoleByName(realm, clientUUID, role.getName(), token);
+
+            resolvedRoles.add(resolvedRole);
+        }
+
+        // 4️⃣ Assign resolved roles to user
+        assignClientRolesToUser(realm, userId, clientUUID, resolvedRoles, token);
+
+        log.info(
+                "✅ Successfully assigned roles {} to user '{}' in realm '{}' for client '{}'",
+                resolvedRoles.stream().map(r -> r.get("name")).toList(),
+                username,
+                realm,
+                clientName);
     }
 
-    private List<String> fetchClientRoleIdsByName(
+    private String resolveClientUUID(String realm, String clientName, String token) {
+        String url = config.getBaseUrl()
+                + "/admin/realms/" + realm
+                + "/clients?clientId=" + clientName;
+
+        HttpHeaders headers = authHeaders(token);
+
+        ResponseEntity<List> response = restTemplate.exchange(
+                url, HttpMethod.GET, new HttpEntity<>(headers), List.class);
+
+        List<Map<String, Object>> clients = response.getBody();
+
+        if (clients == null || clients.isEmpty()) {
+            throw new RuntimeException("Client not found: " + clientName);
+        }
+
+        return clients.get(0).get("id").toString();
+    }
+
+    private Map<String, Object> resolveClientRoleByName(
             String realm,
             String clientUUID,
-            List<Map<String, Object>> rolesByName,
+            String roleName,
             String token) {
 
         String url = config.getBaseUrl()
                 + "/admin/realms/" + realm
                 + "/clients/" + clientUUID
-                + "/roles";
+                + "/roles/" + roleName;
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(token);
+        HttpHeaders headers = authHeaders(token);
 
-        ResponseEntity<List> response = restTemplate.exchange(
-                url,
-                HttpMethod.GET,
-                new HttpEntity<>(headers),
-                List.class);
+        ResponseEntity<Map> response = restTemplate.exchange(
+                url, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
 
-        List<Map<String, Object>> allRoles = response.getBody();
-        List<String> filteredRoleIds = new ArrayList<>();
+        Map<String, Object> role = response.getBody();
 
-        for (Map<String, Object> roleRequest : rolesByName) {
-            String requestedRoleName = roleRequest.get("name").toString();
-
-            allRoles.stream()
-                    .filter(r -> requestedRoleName.equals(r.get("name")))
-                    .findFirst()
-                    .ifPresent(role -> filteredRoleIds.add(role.get("id").toString()));
+        if (role == null) {
+            throw new RuntimeException("Role not found: " + roleName);
         }
 
-        if (filteredRoleIds.isEmpty()) {
-            throw new RuntimeException("No matching client role IDs found");
-        }
+        // 🔥 MINIMAL PAYLOAD (THIS IS THE KEY)
+        Map<String, Object> minimalRole = new HashMap<>();
+        minimalRole.put("id", role.get("id"));
+        minimalRole.put("name", role.get("name"));
 
-        return filteredRoleIds;
+        return minimalRole;
     }
 
-    // Helper method to get full role details (id and name) by role IDs
-    private List<Map<String, Object>> getRoleDetailsByIds(
-            String realm,
-            String clientUUID,
-            List<String> roleIds,
-            String token) {
-
-        String url = config.getBaseUrl()
-                + "/admin/realms/" + realm
-                + "/clients/" + clientUUID
-                + "/roles";
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(token);
-
-        ResponseEntity<List> response = restTemplate.exchange(
-                url,
-                HttpMethod.GET,
-                new HttpEntity<>(headers),
-                List.class);
-
-        List<Map<String, Object>> allRoles = response.getBody();
-        List<Map<String, Object>> matchedRoles = new ArrayList<>();
-
-        for (String roleId : roleIds) {
-            allRoles.stream()
-                    .filter(r -> roleId.equals(r.get("id")))
-                    .findFirst()
-                    .ifPresent(matchedRoles::add);
-        }
-
-        return matchedRoles;
-    }
-
-    @Override
-    public void assignClientRolesToUser(
+    private void assignClientRolesToUser(
             String realm,
             String userId,
             String clientUUID,
-            List<Map<String, Object>> rolesBody,
+            List<Map<String, Object>> roles,
             String token) {
 
         String url = config.getBaseUrl()
@@ -803,15 +791,20 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
                 + "/users/" + userId
                 + "/role-mappings/clients/" + clientUUID;
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(token);
+        HttpHeaders headers = authHeaders(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
 
-        HttpEntity<List<Map<String, Object>>> request = new HttpEntity<>(rolesBody, headers);
+        HttpEntity<List<Map<String, Object>>> request = new HttpEntity<>(roles, headers);
 
         restTemplate.postForEntity(url, request, Void.class);
 
-        log.info("Client roles assigned to user {}", userId);
+        log.info("Assigned client roles {} to user {}", roles, userId);
+    }
+
+    private HttpHeaders authHeaders(String token) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        return headers;
     }
 
     // ---------------- SIGNUP ----------------
