@@ -3,55 +3,44 @@ package com.paxaris.identity_service.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paxaris.identity_service.dto.AssignRoleRequest;
 import com.paxaris.identity_service.dto.RoleCreationRequest;
-import com.paxaris.identity_service.dto.RoleRequest;
 import com.paxaris.identity_service.dto.SignupRequest;
-import com.paxaris.identity_service.dto.UrlEntry;
 import com.paxaris.identity_service.service.DynamicJwtDecoder;
-import com.paxaris.identity_service.service.KeycloakClientService;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
-import io.jsonwebtoken.security.Keys;
+import com.paxaris.identity_service.service.KeycloakProductService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.web.multipart.MultipartFile;
 
-import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 @RestController
 @RequestMapping("/")
 @RequiredArgsConstructor
 @Slf4j
-public class KeycloakClientController {
+public class KeycloakProductController {
 
     private final RestTemplate restTemplate = new RestTemplate();
     private final DynamicJwtDecoder jwtDecoder;
-    private final KeycloakClientService clientService;
+    private final KeycloakProductService productService;
     private final ObjectMapper objectMapper;
 
-    private static final Logger logger = LoggerFactory.getLogger(KeycloakClientController.class);
+    private static final Logger logger = LoggerFactory.getLogger(KeycloakProductController.class);
 
     // ------------------- TOKEN
     @GetMapping("identity/master/login")
     public ResponseEntity<Map<String, String>> getMasterTokenInternally() {
-        String token = clientService.getMasterTokenInternally();
+        String token = productService.getMasterTokenInternally();
 
         Map<String, String> response = new HashMap<>();
         response.put("access_token", token);
@@ -69,7 +58,7 @@ public class KeycloakClientController {
             @RequestParam(name = "client_secret", required = false) String clientSecret) {
 
         try {
-            Map<String, Object> token = clientService.getMyRealmToken(username, password, clientId, realm);
+            Map<String, Object> token = productService.getMyRealmToken(username, password, clientId, realm);
             return ResponseEntity.ok(token);
         } catch (Exception e) {
             return ResponseEntity.status(401).body(Map.of("error", "Unauthorized", "message", e.getMessage()));
@@ -93,7 +82,7 @@ public class KeycloakClientController {
             logger.info("🔹 Authenticating user '{}' with clientId '{}'", username, clientId);
 
             // Get Keycloak token
-            Map<String, Object> tokenMap = clientService.getMyRealmToken(username, password, clientId, realm);
+            Map<String, Object> tokenMap = productService.getMyRealmToken(username, password, clientId, realm);
             logger.info("🔹 Keycloak response token map: {}", tokenMap);
 
             String keycloakToken = (String) tokenMap.get("access_token");
@@ -103,68 +92,55 @@ public class KeycloakClientController {
                         .body(Map.of("error", "Invalid credentials"));
             }
 
-            // -----------------------------
-            // 🔥 NEW: Decode JWT and extract roles/realm/product
-            // -----------------------------
-            Jwt decodedJwt = jwtDecoder.decode(keycloakToken); // (changed)
-            Map<String, Object> claims = decodedJwt.getClaims(); // (changed)
+            // Decode JWT and extract roles/realm/product
+            Jwt decodedJwt = jwtDecoder.decode(keycloakToken);
+            Map<String, Object> claims = decodedJwt.getClaims();
 
-            // --- Safe extraction of realm roles ---
             Map<String, Object> realmAccess = claims.get("realm_access") instanceof Map
                     ? (Map<String, Object>) claims.get("realm_access")
-                    : Map.of(); // (changed)
+                    : Map.of();
 
             List<String> realmRoles = realmAccess.get("roles") instanceof List
                     ? ((List<?>) realmAccess.get("roles")).stream()
-                            .map(Object::toString)
-                            .toList()
-                    : List.of(); // (changed)
+                    .map(Object::toString)
+                    .toList()
+                    : List.of();
 
-            // --- Safe extraction of client roles ---
             Map<String, Object> resourceAccess = claims.get("resource_access") instanceof Map
                     ? (Map<String, Object>) claims.get("resource_access")
-                    : Map.of(); // (changed)
+                    : Map.of();
 
-            List<String> clientRoles = new ArrayList<>(); // (changed)
-
-            for (Map.Entry<String, Object> entry : resourceAccess.entrySet()) { // (changed)
+            List<String> productRoles = new ArrayList<>();
+            for (Map.Entry<String, Object> entry : resourceAccess.entrySet()) {
                 if (!(entry.getValue() instanceof Map))
                     continue;
-                Map<String, Object> clientMap = (Map<String, Object>) entry.getValue();
-                if (clientMap.get("roles") instanceof List<?> rolesList) {
-                    rolesList.forEach(r -> clientRoles.add(r.toString()));
+                Map<String, Object> productMap = (Map<String, Object>) entry.getValue();
+                if (productMap.get("roles") instanceof List<?> rolesList) {
+                    rolesList.forEach(r -> productRoles.add(r.toString()));
                 }
             }
 
-            // Merge roles
-            List<String> allRoles = new ArrayList<>(realmRoles); // (changed)
-            allRoles.addAll(clientRoles); // (changed)
+            List<String> allRoles = new ArrayList<>(realmRoles);
+            allRoles.addAll(productRoles);
 
-            // Extract realm from ISS claim
-            String extractedRealm = claims.getOrDefault("iss", "").toString(); // (changed)
-            if (extractedRealm.contains("/realms/")) { // (changed)
+            String extractedRealm = claims.getOrDefault("iss", "").toString();
+            if (extractedRealm.contains("/realms/")) {
                 extractedRealm = extractedRealm.substring(extractedRealm.lastIndexOf("/realms/") + 8);
             }
 
-            // Extract product (client_id from azp)
-            String product = claims.getOrDefault("azp", "").toString(); // (changed)
+            String product = claims.getOrDefault("azp", "").toString();
             String azp = product;
 
-            // -----------------------------
-            // END new section
-            // -----------------------------
-
-            // Return token + custom data
             Map<String, Object> response = new HashMap<>();
             response.put("access_token", keycloakToken);
             response.put("expires_in", tokenMap.get("expires_in"));
             response.put("token_type", tokenMap.get("token_type"));
             response.put("azp", azp);
-            response.put("roles", allRoles); // (changed)
-            response.put("realm", extractedRealm); // (changed)
-            response.put("product", product); // (changed)
+            response.put("roles", allRoles);
+            response.put("realm", extractedRealm);
+            response.put("product", product);
 
-            logger.info("✅ Returning login response with roles/realm/product"); // (changeds)
+            logger.info("✅ Returning login response with roles/realm/product");
 
             return ResponseEntity.ok(response);
 
@@ -192,53 +168,45 @@ public class KeycloakClientController {
             Jwt decodedJwt = jwtDecoder.decode(token);
             Map<String, Object> claims = decodedJwt.getClaims();
 
-            // --- Safe extraction of realm roles ---
             Map<String, Object> realmAccess = claims.get("realm_access") instanceof Map
                     ? (Map<String, Object>) claims.get("realm_access")
                     : Map.of();
             List<String> realmRoles = realmAccess.get("roles") instanceof List
                     ? ((List<?>) realmAccess.get("roles")).stream()
-                            .map(Object::toString)
-                            .toList()
+                    .map(Object::toString)
+                    .toList()
                     : List.of();
 
-            // --- Safe extraction of client roles ---
             Map<String, Object> resourceAccess = claims.get("resource_access") instanceof Map
                     ? (Map<String, Object>) claims.get("resource_access")
                     : Map.of();
-            List<String> clientRoles = new ArrayList<>();
+            List<String> productRoles = new ArrayList<>();
             for (Map.Entry<String, Object> entry : resourceAccess.entrySet()) {
                 if (!(entry.getValue() instanceof Map))
                     continue;
-                Map<String, Object> clientMap = (Map<String, Object>) entry.getValue();
-                if (clientMap.get("roles") instanceof List<?> rolesList) {
-                    rolesList.forEach(r -> clientRoles.add(r.toString()));
+                Map<String, Object> productMap = (Map<String, Object>) entry.getValue();
+                if (productMap.get("roles") instanceof List<?> rolesList) {
+                    rolesList.forEach(r -> productRoles.add(r.toString()));
                 }
             }
 
-            // Merge roles
             List<String> allRoles = new ArrayList<>(realmRoles);
-            allRoles.addAll(clientRoles);
+            allRoles.addAll(productRoles);
 
-            // Extract realm
             String realm = claims.getOrDefault("iss", "").toString();
             if (realm.contains("/realms/")) {
                 realm = realm.substring(realm.lastIndexOf("/realms/") + 8);
             }
 
-            // Product = client_id
-            // Product = azp (Authorized Party)
             String product = claims.getOrDefault("azp", "").toString();
 
-            // Debug log
-            System.out
-                    .println("🔹 Token validated. Realm: " + realm + ", Product: " + product + ", Roles: " + allRoles);
+            System.out.println("🔹 Token validated. Realm: " + realm + ", Product: " + product + ", Roles: " + allRoles);
 
             return ResponseEntity.ok(Map.of(
                     "status", "VALID",
                     "realm", realm,
                     "product", product,
-                    "azp", product, // ✅ added: include AZP in response
+                    "azp", product,
                     "roles", allRoles));
 
         } catch (Exception e) {
@@ -251,31 +219,8 @@ public class KeycloakClientController {
         }
     }
 
-    @GetMapping("/token/validate")
-    public ResponseEntity<String> validateToken(
-            @RequestParam String realm,
-            @RequestHeader("Authorization") String authHeader) {
-
-        String token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
-        boolean valid = clientService.validateToken(realm, token);
-        return valid ? ResponseEntity.ok("Token is valid") : ResponseEntity.badRequest().body("Token is invalid");
-    }
-
     // ------------------- SIGNUP -------------------
-    // @PostMapping("/signup")
-    // public ResponseEntity<String> signup(@RequestBody SignupRequest request) {
-    // logger.info("Received signup request at Identity Service: {}", request);
-    // try {
-    // clientService.signup(request);
-    // logger.info("Signup completed successfully for realm: {}",
-    // request.getRealmName());
-    // return ResponseEntity.ok("Realm, client, and admin user created
-    // successfully.");
-    // } catch (Exception e) {
-    // logger.error("Signup failed at Identity Service: {}", e.getMessage(), e);
-    // return ResponseEntity.badRequest().body("Signup failed: " + e.getMessage());
-    // }
-    // }
+
     @PostMapping(value = "/signup", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> signup(
             @RequestParam("data") String data,
@@ -284,7 +229,7 @@ public class KeycloakClientController {
             ObjectMapper objectMapper = new ObjectMapper();
             SignupRequest request = objectMapper.readValue(data, SignupRequest.class);
 
-            com.paxaris.identity_service.dto.SignupStatus status = clientService.signup(request, sourceZip);
+            com.paxaris.identity_service.dto.SignupStatus status = productService.signup(request, sourceZip);
 
             if ("SUCCESS".equals(status.getStatus())) {
                 return ResponseEntity.ok(status);
@@ -309,9 +254,9 @@ public class KeycloakClientController {
     @PostMapping("/realm")
     public ResponseEntity<String> createRealm(@RequestParam String realmName) {
         try {
-            String masterToken = clientService.getMyRealmToken("admin", "admin123", "admin-cli", "master")
+            String masterToken = productService.getMyRealmToken("admin", "admin123", "admin-cli", "master")
                     .get("access_token").toString();
-            clientService.createRealm(realmName, masterToken);
+            productService.createRealm(realmName, masterToken);
             return ResponseEntity.ok("Realm created successfully: " + realmName);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Failed to create realm: " + e.getMessage());
@@ -322,13 +267,14 @@ public class KeycloakClientController {
     @GetMapping("/realms")
     public ResponseEntity<List<Map<String, Object>>> getAllRealms() {
         try {
-            String masterToken = clientService.getMyRealmToken("admin", "admin123", "admin-cli", "master")
+            String masterToken = productService.getMyRealmToken("admin", "admin123", "admin-cli", "master")
                     .get("access_token").toString();
-            return ResponseEntity.ok(clientService.getAllRealms(masterToken));
+            return ResponseEntity.ok(productService.getAllRealms(masterToken));
         } catch (Exception e) {
             return ResponseEntity.badRequest().build();
         }
     }
+
     @GetMapping("/identity/realms/user")
     public ResponseEntity<String> getUserRealms(
             @RequestHeader("Authorization") String authorizationHeader
@@ -345,32 +291,49 @@ public class KeycloakClientController {
             return ResponseEntity.badRequest().build();
         }
     }
-    // ------------------- CLIENT -------------------
-    @PostMapping("/identity/{realm}/clients")
-    public ResponseEntity<String> createClient(
-            @PathVariable String realm,
-            @RequestBody Map<String, Object> clientRequest) {
 
-        String masterToken = clientService.getMyRealmToken(
+    // ------------------- PRODUCT -------------------
+    @PostMapping("/identity/{realm}/clients")
+    public ResponseEntity<String> createProduct(
+            @PathVariable String realm,
+            @RequestBody Map<String, Object> productRequest) {
+
+        String masterToken = productService.getMyRealmToken(
                 "admin", "admin@123", "admin-cli", "master").get("access_token").toString();
 
-        String clientId = clientRequest.get("clientId").toString();
-        boolean publicClient = Boolean.parseBoolean(
-                clientRequest.getOrDefault("publicClient", "true").toString());
+        String productId = productRequest.get("clientId").toString();
+        boolean publicProduct = Boolean.parseBoolean(
+                productRequest.getOrDefault("publicClient", "true").toString());
 
         try {
-            String clientUUID = clientService.createClient(realm, clientId, publicClient, masterToken);
-            return ResponseEntity.ok("Client created successfully with UUID: " + clientUUID);
+            String productUUID = productService.createProduct(realm, productId, publicProduct, masterToken);
+            return ResponseEntity.ok("Product created successfully with UUID: " + productUUID);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Failed to create client: " + e.getMessage());
+                    .body("Failed to create product: " + e.getMessage());
         }
     }
 
-    // ---------------------------------get all clients
+    //------------
+
+    @GetMapping("/client/{realm}/{clientName}/uuid")
+    public ResponseEntity<String> getProductUUID(
+            @PathVariable String realm,
+            @PathVariable String clientName) {
+        try {
+            String masterToken = productService.getMyRealmToken("admin", "admin123", "admin-cli", "master")
+                    .get("access_token").toString();
+            String productUUID = productService.getProductUUID(realm, clientName, masterToken);
+            return ResponseEntity.ok(productUUID);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Failed to get product UUID: " + e.getMessage());
+        }
+    }
+
+    // --------- get all products --------------------------------------------
 
     @GetMapping("/identity/clients/{realm}")
-    public ResponseEntity<List<Map<String, Object>>> getAllClients(
+    public ResponseEntity<List<Map<String, Object>>> getAllProducts(
             @PathVariable String realm,
             @RequestHeader("Authorization") String authorizationHeader) {
 
@@ -379,33 +342,16 @@ public class KeycloakClientController {
                 : authorizationHeader;
 
         try {
-            return ResponseEntity.ok(clientService.getAllClients(realm, token));
+            return ResponseEntity.ok(productService.getAllProducts(realm, token));
         } catch (HttpClientErrorException.Unauthorized e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         } catch (HttpClientErrorException.Forbidden e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         } catch (Exception e) {
-            log.error("Failed to get clients for realm '{}': {}", realm, e.getMessage());
+            log.error("Failed to get products for realm '{}': {}", realm, e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
-    // -------------------------------------------------------------------------------------------------------------------------------------------
-    @GetMapping("/client/{realm}/{clientName}/uuid")
-    public ResponseEntity<String> getClientUUID(
-            @PathVariable String realm,
-            @PathVariable String clientName) {
-        try {
-            String masterToken = clientService.getMyRealmToken("admin", "admin123", "admin-cli", "master")
-                    .get("access_token").toString();
-            String clientUUID = clientService.getClientUUID(realm, clientName, masterToken);
-            return ResponseEntity.ok(clientUUID);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Failed to get client UUID: " + e.getMessage());
-        }
-    }
-
-    // ------------------------------------------------------------------------------------------------------------------------------------------------------------
-  
 
     // ------------------- USER -------------------
     @PostMapping("/identity/{realm}/users")
@@ -414,40 +360,37 @@ public class KeycloakClientController {
             @RequestHeader("Authorization") String authorizationHeader,
             @RequestBody Map<String, Object> userPayload) {
 
-        // Extract token from the Authorization header
         String token = authorizationHeader.startsWith("Bearer ")
                 ? authorizationHeader.substring(7)
                 : authorizationHeader;
 
         try {
-            // Pass the provided token to the service
-            String userId = clientService.createUser(realm, token, userPayload);
+            String userId = productService.createUser(realm, token, userPayload);
             return ResponseEntity.ok(userId);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Failed to create user: " + e.getMessage());
         }
     }
 
-    // -----------------------------------------------------------------------------------------------------------------------------------------------------
+    // --------------------------------get users --------------------------------------
     @GetMapping("identity/users/{realm}")
-public ResponseEntity<List<Map<String, Object>>> getAllUsers(
-        @PathVariable String realm,
-        @RequestHeader("Authorization") String authorizationHeader) {
+    public ResponseEntity<List<Map<String, Object>>> getAllUsers(
+            @PathVariable String realm,
+            @RequestHeader("Authorization") String authorizationHeader) {
 
-    String token = authorizationHeader.startsWith("Bearer ") ? authorizationHeader.substring(7) : authorizationHeader;
+        String token = authorizationHeader.startsWith("Bearer ") ? authorizationHeader.substring(7) : authorizationHeader;
 
-    try {
-        List<Map<String, Object>> users = clientService.getAllUsers(realm, token);
-        return ResponseEntity.ok(users);
-    } catch (Exception e) {
-        return ResponseEntity.badRequest().build();
+        try {
+            List<Map<String, Object>> users = productService.getAllUsers(realm, token);
+            return ResponseEntity.ok(users);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
     }
-}
 
-
-    // ------------------- ROLE -------------------
+    // -------------------Create ROLE ok-------------------
     @PostMapping("/identity/{realm}/clients/{clientName}/roles")
-    public ResponseEntity<String> createClientRoles(
+    public ResponseEntity<String> createProductRoles(
             @PathVariable String realm,
             @PathVariable String clientName,
             @RequestHeader("Authorization") String authorizationHeader,
@@ -458,16 +401,40 @@ public ResponseEntity<List<Map<String, Object>>> getAllUsers(
                 : authorizationHeader;
 
         try {
-            clientService.createClientRoles(realm, clientName, roleRequests, token);
-            return ResponseEntity.ok("Roles created successfully for client: " + clientName);
+            productService.createProductRoles(realm, clientName, roleRequests, token);
+            return ResponseEntity.ok("Roles created successfully for product: " + clientName);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Failed to create roles: " + e.getMessage());
         }
     }
 
+    // ------------------- ASSIGN ROLE ok-------------------
+    @PostMapping("identity/{realm}/users/{username}/clients/{clientName}/roles")
+    public ResponseEntity<String> assignProductRoles(
+            @PathVariable String realm,
+            @PathVariable String username,
+            @PathVariable String clientName,
+            @RequestHeader("Authorization") String authorizationHeader,
+            @RequestBody List<AssignRoleRequest> rolesBody) {
+
+        String token = authorizationHeader.startsWith("Bearer ")
+                ? authorizationHeader.substring(7)
+                : authorizationHeader;
+
+        productService.assignProductRolesByName(
+                realm,
+                username,
+                clientName,
+                token,
+                rolesBody);
+
+        return ResponseEntity.ok("Product roles assigned successfully");
+    }
+
+    //-----------------get client roles
     @GetMapping("/identity/{realm}/clients/{clientName}/roles")
-    public ResponseEntity<?> getClientRoles(
+    public ResponseEntity<?> getProductRoles(
             @PathVariable String realm,
             @PathVariable String clientName,
             @RequestHeader("Authorization") String authorizationHeader) {
@@ -477,12 +444,12 @@ public ResponseEntity<List<Map<String, Object>>> getAllUsers(
                 : authorizationHeader;
 
         try {
-            List<Map<String, Object>> roles = clientService.getClientRoles(realm, clientName, token);
+            List<Map<String, Object>> roles = productService.getProductRoles(realm, clientName, token);
 
             return ResponseEntity.ok(roles);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Failed to fetch client roles: " + e.getMessage());
+                    .body("Failed to fetch product roles: " + e.getMessage());
         }
     }
 
@@ -494,10 +461,10 @@ public ResponseEntity<List<Map<String, Object>>> getAllUsers(
             @PathVariable String roleName,
             @RequestBody RoleCreationRequest role) {
         try {
-            String masterToken = clientService.getMyRealmToken("admin", "admin123", "admin-cli", "master")
+            String masterToken = productService.getMyRealmToken("admin", "admin123", "admin-cli", "master")
                     .get("access_token").toString();
-            String clientUUID = clientService.getClientId(realm, client, masterToken);
-            boolean ok = clientService.updateRole(realm, clientUUID, roleName, role, masterToken);
+            String productUUID = productService.getProductId(realm, client, masterToken);
+            boolean ok = productService.updateRole(realm, productUUID, roleName, role, masterToken);
             return ok ? ResponseEntity.ok("Role updated successfully")
                     : ResponseEntity.badRequest().body("Failed to update role");
         } catch (Exception e) {
@@ -512,10 +479,10 @@ public ResponseEntity<List<Map<String, Object>>> getAllUsers(
             @PathVariable String client,
             @PathVariable String roleName) {
         try {
-            String masterToken = clientService.getMyRealmToken("admin", "admin123", "admin-cli", "master")
+            String masterToken = productService.getMyRealmToken("admin", "admin123", "admin-cli", "master")
                     .get("access_token").toString();
-            String clientUUID = clientService.getClientId(realm, client, masterToken);
-            boolean ok = clientService.deleteRole(realm, clientUUID, roleName, masterToken);
+            String productUUID = productService.getProductId(realm, client, masterToken);
+            boolean ok = productService.deleteProductRole(realm, productUUID, roleName, masterToken);
             return ok ? ResponseEntity.ok("Role deleted successfully")
                     : ResponseEntity.badRequest().body("Failed to delete role");
         } catch (Exception e) {
@@ -523,27 +490,6 @@ public ResponseEntity<List<Map<String, Object>>> getAllUsers(
         }
     }
 
-    // ------------------- ASSIGN ROLE -------------------
-    @PostMapping("identity/{realm}/users/{username}/clients/{clientName}/roles")
-    public ResponseEntity<String> assignClientRoles(
-            @PathVariable String realm,
-            @PathVariable String username,
-            @PathVariable String clientName,
-            @RequestHeader("Authorization") String authorizationHeader,
-            @RequestBody List<AssignRoleRequest> rolesBody) {
 
-        String token = authorizationHeader.startsWith("Bearer ")
-                ? authorizationHeader.substring(7)
-                : authorizationHeader;
-
-        clientService.assignClientRolesByName(
-                realm,
-                username,
-                clientName,
-                token, 
-                rolesBody);
-
-        return ResponseEntity.ok("Client roles assigned successfully");
-    }
 
 }

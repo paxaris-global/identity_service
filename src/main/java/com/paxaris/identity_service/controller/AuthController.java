@@ -1,7 +1,7 @@
 package com.paxaris.identity_service.controller;
 
 import com.paxaris.identity_service.service.DynamicJwtDecoder;
-import com.paxaris.identity_service.service.KeycloakClientService;
+import com.paxaris.identity_service.service.KeycloakProductService;
 import com.paxaris.identity_service.service.KeycloakService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -24,7 +24,7 @@ public class AuthController {
 
     private final RestTemplate restTemplate;
     private final DynamicJwtDecoder jwtDecoder;
-    private final KeycloakClientService keycloakClientService;
+    private final KeycloakProductService keycloakClientService;
     private final KeycloakService keycloakService;
 
     // ===================== LOGIN =====================

@@ -8,7 +8,7 @@ import lombok.Data;
 public class SignupRequest {
 
     private String realmName;
-    private String clientId;
+    private String productName;
     private boolean publicClient = true;
     private AdminUser adminUser;
 
