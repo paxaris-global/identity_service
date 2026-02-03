@@ -11,4 +11,5 @@ public class UrlEntry {
     private Long id;   // optional for update
     private String url;
     private String uri;
+    private String httpMethod;
 }

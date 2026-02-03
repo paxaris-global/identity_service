@@ -926,6 +926,7 @@ private void logCurlCommand(String realm, String userId, String clientUUID,
             UrlEntry urlEntry = new UrlEntry();
             urlEntry.setUrl(request.getUrl());
             urlEntry.setUri(request.getUri());
+            urlEntry.setHttpMethod(request.getHttpMethod());
 
             RoleRequest roleRequest = new RoleRequest();
             roleRequest.setRealmName(realm);

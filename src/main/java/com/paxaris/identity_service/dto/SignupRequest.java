@@ -22,4 +22,5 @@ public class SignupRequest {
     }
     private String url;
     private String uri;
+    private String httpMethod;
 }
