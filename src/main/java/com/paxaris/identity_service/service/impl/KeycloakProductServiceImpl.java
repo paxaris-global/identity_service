@@ -535,7 +535,7 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
     }
 
 
-    // -------------------------------getProductRoles----------------------------------
+    // -------------------------------getProductRole----------------------------------
     @Override
     public List<Map<String, Object>> getProductRoles(String realm, String productName, String token) {
         log.info("Fetching roles for product '{}' in realm '{}'", productName, realm);
