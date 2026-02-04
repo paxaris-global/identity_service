@@ -1,11 +1,15 @@
 com\paxaris\identity_service\service\impl\KeycloakClientServiceImpl$5.class
 com\paxaris\identity_service\service\impl\KeycloakClientServiceImpl.class
 com\paxaris\identity_service\controller\AccessValidationController.class
+com\paxaris\identity_service\dto\AssignRoleRequest.class
 com\paxaris\identity_service\dto\RoleCreationRequest.class
 com\paxaris\identity_service\config\KeycloakRealmAndClientRoleConverter.class
 com\paxaris\identity_service\service\impl\KeycloakClientServiceImpl$8.class
+com\paxaris\identity_service\dto\SignupStatus.class
 com\paxaris\identity_service\service\impl\KeycloakClientServiceImpl$10.class
 com\paxaris\identity_service\dto\SignupRequest$AdminUser.class
+com\paxaris\identity_service\dto\SignupStatus$StepStatus.class
+com\paxaris\identity_service\dto\SignupStatus$StepStatus$StepStatusBuilder.class
 com\paxaris\identity_service\service\impl\KeycloakClientServiceImpl$12.class
 com\paxaris\identity_service\service\impl\KeycloakClientServiceImpl$3.class
 com\paxaris\identity_service\controller\KeycloakClientController.class
@@ -28,6 +32,7 @@ com\paxaris\identity_service\service\impl\KeycloakClientServiceImpl$7.class
 com\paxaris\identity_service\service\KeycloakService.class
 com\paxaris\identity_service\dto\RoleRequest.class
 com\paxaris\identity_service\service\impl\KeycloakClientServiceImpl$9.class
+com\paxaris\identity_service\dto\SignupStatus$SignupStatusBuilder.class
 com\paxaris\identity_service\service\impl\KeycloakClientServiceImpl$11.class
 com\paxaris\identity_service\config\SwaggerConfig.class
 com\paxaris\identity_service\dto\SignupRequest.class
