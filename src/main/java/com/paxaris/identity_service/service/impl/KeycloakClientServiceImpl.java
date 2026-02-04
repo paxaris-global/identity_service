@@ -530,6 +530,9 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
                     UrlEntry urlEntry = new UrlEntry();
                     urlEntry.setUrl(role.getUrl());
                     urlEntry.setUri(role.getUri());
+                    urlEntry.setHttpMethod(
+                            role.getHttpMethod() != null ? role.getHttpMethod() : "GET"
+                    );
 
                     roleRequest.setUrls(List.of(urlEntry));
 
@@ -540,13 +543,14 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
                                 .retrieve()
                                 .toBodilessEntity()
                                 .block();
-                        log.info("Project Management Service updated for role '{}'", role.getName());
+
+                        log.info("✅ Project Manager updated for role '{}'", role.getName());
+
                     } catch (Exception e) {
-                        log.error("Failed to update Project Management Service for role '{}': {}", role.getName(),
-                                e.getMessage());
-                        // You can choose to add role name to failedRoles or handle separately
+                        log.error("❌ PM update failed for role '{}': {}", role.getName(), e.getMessage(), e);
                     }
                 }
+
 
                 // Optionally save to DB here as well if needed
 

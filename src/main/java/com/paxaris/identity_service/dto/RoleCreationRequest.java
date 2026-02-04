@@ -8,4 +8,5 @@ public class RoleCreationRequest {
     private String description;
     private String url;
     private String uri;
+    private String httpMethod;
 }

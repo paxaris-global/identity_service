@@ -10,6 +10,7 @@ public class RoleRequest {
     private String description;
     private String url;
     private String uri;
+    private String httpMethod;
 
     private Long id;
     private String realmName;
