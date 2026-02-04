@@ -355,7 +355,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
 
-        // Make REST call to Keycloaks
+        // Make REST call to Keycloak
         ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
 
         if (!response.getStatusCode().is2xxSuccessful()) {
