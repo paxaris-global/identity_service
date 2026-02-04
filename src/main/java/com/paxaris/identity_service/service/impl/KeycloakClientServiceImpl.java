@@ -488,20 +488,28 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
     // ---------------- ROLE ----------------
     @Override
-    public void createClientRoles(String realm, String clientName, List<RoleCreationRequest> roleRequests,
-            String token) {
-        log.info("Attempting to create {} client roles for client '{}' in realm '{}'", roleRequests.size(), clientName,
-                realm);
+    public void createClientRoles(String realm,
+                                  String clientName,
+                                  List<RoleCreationRequest> roleRequests,
+                                  String token) {
+
+        log.info("Attempting to create {} role mappings for client '{}' in realm '{}'",
+                roleRequests.size(), clientName, realm);
+
         String clientUUID = getClientUUID(realm, clientName, token);
         log.info("Client UUID for '{}' is '{}'", clientName, clientUUID);
 
-        String url = config.getBaseUrl() + "/admin/realms/" + realm + "/clients/" + clientUUID + "/roles";
+        String keycloakUrl = config.getBaseUrl()
+                + "/admin/realms/" + realm
+                + "/clients/" + clientUUID
+                + "/roles";
 
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
 
         List<String> failedRoles = new ArrayList<>();
+        Set<String> createdRoles = new HashSet<>();
 
         WebClient webClient = null;
         if (projectManagementBaseUrl != null && !projectManagementBaseUrl.isEmpty()) {
@@ -513,55 +521,90 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         }
 
         for (RoleCreationRequest role : roleRequests) {
-            Map<String, Object> body = Map.of(
-                    "name", role.getName(),
-                    "description", role.getDescription());
-            try {
-                restTemplate.postForEntity(url, new HttpEntity<>(body, headers), String.class);
-                log.info("Role '{}' created successfully.", role.getName());
 
-                // Send to Project Management Service if configured
-                if (webClient != null) {
-                    RoleRequest roleRequest = new RoleRequest();
-                    roleRequest.setRealmName(realm);
-                    roleRequest.setProductName(clientName);
-                    roleRequest.setRoleName(role.getName());
+            String roleName = role.getName();
 
-                    UrlEntry urlEntry = new UrlEntry();
-                    urlEntry.setUrl(role.getUrl());
-                    urlEntry.setUri(role.getUri());
-                    urlEntry.setHttpMethod(
-                            role.getHttpMethod() != null ? role.getHttpMethod() : "GET"
+            // ============================
+            // 1️⃣ CREATE ROLE IN KEYCLOAK ONCE
+            // ============================
+            if (!createdRoles.contains(roleName)) {
+
+                Map<String, Object> body = Map.of(
+                        "name", roleName,
+                        "description", role.getDescription()
+                );
+
+                try {
+                    restTemplate.postForEntity(
+                            keycloakUrl,
+                            new HttpEntity<>(body, headers),
+                            String.class
                     );
 
-                    roleRequest.setUrls(List.of(urlEntry));
+                    log.info("✅ Role '{}' created in Keycloak", roleName);
+                    createdRoles.add(roleName);
 
-                    try {
-                        webClient.post()
-                                .uri("/project/roles/save-or-update")
-                                .bodyValue(roleRequest)
-                                .retrieve()
-                                .toBodilessEntity()
-                                .block();
+                } catch (Exception e) {
 
-                        log.info("✅ Project Manager updated for role '{}'", role.getName());
-
-                    } catch (Exception e) {
-                        log.error("❌ PM update failed for role '{}': {}", role.getName(), e.getMessage(), e);
+                    // Handle already-existing role safely
+                    if (e.getMessage() != null && e.getMessage().contains("409")) {
+                        log.info("ℹ Role '{}' already exists in Keycloak. Skipping creation.", roleName);
+                        createdRoles.add(roleName);
+                    } else {
+                        failedRoles.add(roleName);
+                        log.error("❌ Failed to create role '{}' in Keycloak: {}", roleName, e.getMessage(), e);
+                        continue;
                     }
                 }
+            }
 
+            // ============================
+            // 2️⃣ SAVE URI + METHOD IN PROJECT MANAGER
+            // ============================
+            if (webClient != null) {
 
-                // Optionally save to DB here as well if needed
+                RoleRequest roleRequest = new RoleRequest();
+                roleRequest.setRealmName(realm);
+                roleRequest.setProductName(clientName);
+                roleRequest.setRoleName(roleName);
 
-            } catch (Exception e) {
-                failedRoles.add(role.getName());
-                log.error("Failed to create role '{}': {}", role.getName(), e.getMessage());
+                UrlEntry urlEntry = new UrlEntry();
+                urlEntry.setUrl(role.getUrl());
+                urlEntry.setUri(role.getUri());
+                urlEntry.setHttpMethod(
+                        role.getHttpMethod() != null
+                                ? role.getHttpMethod().toUpperCase()
+                                : "GET"
+                );
+
+                roleRequest.setUrls(List.of(urlEntry));
+
+                try {
+                    webClient.post()
+                            .uri("/project/roles/save-or-update")
+                            .bodyValue(roleRequest)
+                            .retrieve()
+                            .toBodilessEntity()
+                            .block();
+
+                    log.info("✅ Project Manager updated: {} {} -> {}",
+                            urlEntry.getHttpMethod(),
+                            urlEntry.getUri(),
+                            roleName);
+
+                } catch (Exception e) {
+                    log.error("❌ PM update failed for role '{}': {}", roleName, e.getMessage(), e);
+                }
             }
         }
 
+        // ============================
+        // 3️⃣ FINAL ERROR HANDLING
+        // ============================
         if (!failedRoles.isEmpty()) {
-            throw new RuntimeException("Failed to create roles: " + String.join(", ", failedRoles));
+            throw new RuntimeException(
+                    "Failed to create roles in Keycloak: " + String.join(", ", failedRoles)
+            );
         }
     }
 
