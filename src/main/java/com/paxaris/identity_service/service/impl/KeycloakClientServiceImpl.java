@@ -362,7 +362,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             throw new RuntimeException("Failed to create client with status code: " + response.getStatusCode());
         }
 
-        // Return the client UUID
+        // Return the client UUIDs
         return getClientUUID(realm, clientId, token);
     }
 
