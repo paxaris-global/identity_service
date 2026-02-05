@@ -551,7 +551,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             }
 
             // ==========================
-            // 2️⃣ REGISTER ROLE IN PM
+            // 2️⃣ REGISTER ROLE IN PMs
             // ==========================
             try {
                 RoleRequest pmRequest = new RoleRequest();
