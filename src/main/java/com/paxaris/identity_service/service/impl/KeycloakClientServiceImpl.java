@@ -561,11 +561,12 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
                 pmRequest.setUrls(Collections.emptyList());
 
                 webClient.post()
-                        .uri("/project/roles/register")
+                        .uri("/project/roles/save-or-update")
                         .bodyValue(pmRequest)
                         .retrieve()
                         .toBodilessEntity()
                         .block();
+
 
                 log.info("📦 Role '{}' registered in Project Manager", roleName);
 
