@@ -6,7 +6,7 @@ import lombok.Data;
 public class RoleCreationRequest {
     private String name;
     private String description;
-    private String url;
-    private String uri;
-    private String httpMethod;
+//    private String url;
+//    private String uri;
+//    private String httpMethod;
 }
