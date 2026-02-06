@@ -893,23 +893,10 @@ public SignupStatus signup(SignupRequest request) {
         createRealm(realm, token);
         status.addStep("Create Realm", "SUCCESS", "Realm created");
 
-        // ⏳ small wait (Keycloak needs it)
-        Thread.sleep(800);
-
-        // 3️⃣ CLIENT
+        // 3️⃣ CLIENT (clean – no sleep, no retry)
         status.addStep("Create Client", "IN_PROGRESS", clientId);
-
-        try {
-            createClient(realm, clientId, true, token);
-        } catch (Exception e) {
-            // if Keycloak already created it or delayed response
-            getClientUUID(realm, clientId, token);
-        }
-
-        status.addStep("Create Client", "SUCCESS", "Client ready");
-
-        // ⏳ wait again
-        Thread.sleep(500);
+        String clientUUID = createClientSafe(realm, clientId, token);
+        status.addStep("Create Client", "SUCCESS", "Client created: " + clientUUID);
 
         // 4️⃣ ADMIN USER
         status.addStep("Create Admin User", "IN_PROGRESS", adminUsername);
@@ -947,7 +934,7 @@ public SignupStatus signup(SignupRequest request) {
 
         status.addStep("Assign Admin Roles", "SUCCESS", "Roles assigned");
 
-        // ✅ FINISH
+        // ✅ DONE
         status.setStatus("SUCCESS");
         status.setMessage("Realm provisioned successfully");
 
@@ -956,7 +943,7 @@ public SignupStatus signup(SignupRequest request) {
     } catch (Exception e) {
 
         status.setStatus("FAILED");
-        status.setMessage("Provisioning failed");
+        status.setMessage("Provisioning failed: " + e.getMessage());
 
         status.addStep(
                 "ERROR",
@@ -965,10 +952,33 @@ public SignupStatus signup(SignupRequest request) {
                 e.getMessage()
         );
 
-        throw new RuntimeException(e);
+        throw e; // don’t wrap — keeps real cause
     }
 }
 
+    public String createClientSafe(String realm, String clientId, String token) {
+
+        String url = config.getBaseUrl() + "/admin/realms/" + realm + "/clients";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("clientId", clientId);
+        body.put("enabled", true);
+        body.put("protocol", "openid-connect");
+        body.put("publicClient", true);
+        body.put("standardFlowEnabled", true);
+        body.put("directAccessGrantsEnabled", true);
+        body.put("redirectUris", List.of("*"));
+
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+
+        restTemplate.postForEntity(url, entity, Void.class);
+
+        return getClientUUID(realm, clientId, token);
+    }
 
 
 
