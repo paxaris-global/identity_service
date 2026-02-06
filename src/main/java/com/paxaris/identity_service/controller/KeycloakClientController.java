@@ -1,11 +1,7 @@
 package com.paxaris.identity_service.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.paxaris.identity_service.dto.AssignRoleRequest;
-import com.paxaris.identity_service.dto.RoleCreationRequest;
-import com.paxaris.identity_service.dto.RoleRequest;
-import com.paxaris.identity_service.dto.SignupRequest;
-import com.paxaris.identity_service.dto.UrlEntry;
+import com.paxaris.identity_service.dto.*;
 import com.paxaris.identity_service.service.DynamicJwtDecoder;
 import com.paxaris.identity_service.service.KeycloakClientService;
 import io.jsonwebtoken.Jwts;
@@ -262,49 +258,76 @@ public class KeycloakClientController {
     }
 
     // ------------------- SIGNUP -------------------
-    // @PostMapping("/signup")
-    // public ResponseEntity<String> signup(@RequestBody SignupRequest request) {
-    // logger.info("Received signup request at Identity Service: {}", request);
-    // try {
-    // clientService.signup(request);
-    // logger.info("Signup completed successfully for realm: {}",
-    // request.getRealmName());
-    // return ResponseEntity.ok("Realm, client, and admin user created
-    // successfully.");
-    // } catch (Exception e) {
-    // logger.error("Signup failed at Identity Service: {}", e.getMessage(), e);
-    // return ResponseEntity.badRequest().body("Signup failed: " + e.getMessage());
-    // }
-    // }
-    @PostMapping(value = "/signup", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<?> signup(
-            @RequestParam("data") String data,
-            @RequestParam("sourceZip") MultipartFile sourceZip) {
+//    @PostMapping(value = "/signup", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+//    public ResponseEntity<?> signup(
+//            @RequestParam("data") String data,
+//            @RequestParam("sourceZip") MultipartFile sourceZip) {
+//        try {
+//            ObjectMapper objectMapper = new ObjectMapper();
+//            SignupRequest request = objectMapper.readValue(data, SignupRequest.class);
+//
+//            com.paxaris.identity_service.dto.SignupStatus status = clientService.signup(request, sourceZip);
+//
+//            if ("SUCCESS".equals(status.getStatus())) {
+//                return ResponseEntity.ok(status);
+//            } else {
+//                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(status);
+//            }
+//        } catch (Exception e) {
+//            logger.error("Signup failed: {}", e.getMessage(), e);
+//            com.paxaris.identity_service.dto.SignupStatus errorStatus = com.paxaris.identity_service.dto.SignupStatus
+//                    .builder()
+//                    .status("FAILED")
+//                    .message("Signup failed: " + e.getMessage())
+//                    .steps(new java.util.ArrayList<>())
+//                    .build();
+//            errorStatus.addStep("Signup Process", "FAILED", "Signup failed with exception", e.getMessage());
+//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorStatus);
+//        }
+//    }
+//--------------------------------SIGNUP------------------------------------------
+    @PostMapping(value = "/signup", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<SignupStatus> signup(@RequestBody SignupRequest request) {
+
         try {
-            ObjectMapper objectMapper = new ObjectMapper();
-            SignupRequest request = objectMapper.readValue(data, SignupRequest.class);
+            SignupStatus status = clientService.signup(request);
+            return ResponseEntity.ok(status);
 
-            com.paxaris.identity_service.dto.SignupStatus status = clientService.signup(request, sourceZip);
+        } catch (IllegalArgumentException e) {
 
-            if ("SUCCESS".equals(status.getStatus())) {
-                return ResponseEntity.ok(status);
-            } else {
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(status);
-            }
+            return ResponseEntity.badRequest().body(
+                    SignupStatus.builder()
+                            .status("FAILED")
+                            .message(e.getMessage())
+                            .steps(new ArrayList<>())
+                            .build()
+            );
+
         } catch (Exception e) {
-            logger.error("Signup failed: {}", e.getMessage(), e);
-            com.paxaris.identity_service.dto.SignupStatus errorStatus = com.paxaris.identity_service.dto.SignupStatus
-                    .builder()
+
+            SignupStatus errorStatus = SignupStatus.builder()
                     .status("FAILED")
-                    .message("Signup failed: " + e.getMessage())
-                    .steps(new java.util.ArrayList<>())
+                    .message("Provisioning failed: " + e.getMessage())
+                    .steps(new ArrayList<>())
                     .build();
-            errorStatus.addStep("Signup Process", "FAILED", "Signup failed with exception", e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorStatus);
+
+            errorStatus.addStep(
+                    "Signup",
+                    "FAILED",
+                    "Unexpected error",
+                    e.getMessage()
+            );
+
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(errorStatus);
         }
     }
 
-    // ------------------- REALM
+
+
+
+
+        // ------------------- REALM
     // ----------------------------------------------------------------------------------------------------------------------------
     @PostMapping("/realm")
     public ResponseEntity<String> createRealm(@RequestParam String realmName) {
