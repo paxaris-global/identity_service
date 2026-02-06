@@ -867,66 +867,58 @@ private void logCurlCommand(String realm, String userId, String clientUUID,
 @Override
 public SignupStatus signup(SignupRequest request) {
 
-    if (request == null || request.getRealmName() == null || request.getRealmName().isBlank()) {
-        throw new IllegalArgumentException("Realm name is required");
-    }
+    String realm = request.getRealmName().trim().toLowerCase();
 
-    if (request.getAdminPassword() == null || request.getAdminPassword().isBlank()) {
-        throw new IllegalArgumentException("Admin password is required");
-    }
+    // 🔒 HARD CODED
+    String clientId = realm + "-admin-product";
+    String adminUsername = "admin";
+    String adminEmail = "admin@" + realm + ".com";
+    String password = request.getAdminPassword();
 
     SignupStatus status = SignupStatus.builder()
             .status("IN_PROGRESS")
-            .message("Keycloak provisioning started")
+            .message("Provisioning started")
             .steps(new ArrayList<>())
             .build();
 
-    String realm = request.getRealmName().trim().toLowerCase();
-    String clientId = realm + "-admin-product";
-    String adminUsername = Optional.ofNullable(request.getAdminUsername()).orElse("admin");
-
     try {
-
-        // 1️⃣ Authenticate
+        // 1️⃣ Auth
         status.addStep("Authenticate", "IN_PROGRESS", "Getting master token");
-        String masterToken = getMasterToken();
+        String token = getMasterToken();
         status.addStep("Authenticate", "SUCCESS", "Authenticated");
 
-        // 2️⃣ Create realm
+        // 2️⃣ Realm
         status.addStep("Create Realm", "IN_PROGRESS", realm);
-        createRealm(realm, masterToken);
+        createRealm(realm, token);
         status.addStep("Create Realm", "SUCCESS", "Realm created");
 
-        // 3️⃣ Create client
+        // 3️⃣ Client
         status.addStep("Create Client", "IN_PROGRESS", clientId);
-        createClient(realm, clientId, true, masterToken);
+        createClient(realm, clientId, true, token);
         status.addStep("Create Client", "SUCCESS", "Client created");
 
-        // 4️⃣ Create admin user
+        // 4️⃣ Admin user
         status.addStep("Create Admin User", "IN_PROGRESS", adminUsername);
 
         Map<String, Object> userPayload = new HashMap<>();
         userPayload.put("username", adminUsername);
-        userPayload.put("email", adminUsername + "@" + realm + ".com");
+        userPayload.put("email", adminEmail);
         userPayload.put("enabled", true);
-
         userPayload.put("credentials", List.of(
                 Map.of(
                         "type", "password",
-                        "value", request.getAdminPassword(),
+                        "value", password,
                         "temporary", false
                 )
         ));
 
-        String userId = createUser(realm, masterToken, userPayload);
-
+        String userId = createUser(realm, token, userPayload);
         status.addStep("Create Admin User", "SUCCESS", "User created");
 
-        // 5️⃣ Assign realm admin permissions (correct way)
+        // 5️⃣ Roles
+        status.addStep("Assign Admin Roles", "IN_PROGRESS", "Granting permissions");
 
-        status.addStep("Assign Admin Roles", "IN_PROGRESS", "Granting realm-management roles");
-
-        List<String> adminRoles = List.of(
+        List<String> roles = List.of(
                 "manage-realm",
                 "manage-users",
                 "manage-clients",
@@ -934,12 +926,13 @@ public SignupStatus signup(SignupRequest request) {
                 "impersonation"
         );
 
-        for (String role : adminRoles) {
-            assignRealmManagementRoleToUser(realm, userId, role, masterToken);
+        for (String role : roles) {
+            assignRealmManagementRoleToUser(realm, userId, role, token);
         }
 
-        status.addStep("Assign Admin Roles", "SUCCESS", "Permissions granted");
+        status.addStep("Assign Admin Roles", "SUCCESS", "Roles assigned");
 
+        // 🎉 Done
         status.setStatus("SUCCESS");
         status.setMessage("Realm provisioned successfully");
 
@@ -950,17 +943,14 @@ public SignupStatus signup(SignupRequest request) {
         status.setStatus("FAILED");
         status.setMessage("Provisioning failed");
 
-        if (!status.getSteps().isEmpty()) {
-            SignupStatus.StepStatus last = status.getSteps()
-                    .get(status.getSteps().size() - 1);
+        status.addStep(
+                "ERROR",
+                "FAILED",
+                "Unexpected error",
+                e.getMessage()
+        );
 
-            if ("IN_PROGRESS".equals(last.getStatus())) {
-                last.setStatus("FAILED");
-                last.setError(e.getMessage());
-            }
-        }
-
-        throw new RuntimeException(e);
+        throw new RuntimeException("Signup failed", e);
     }
 }
 
