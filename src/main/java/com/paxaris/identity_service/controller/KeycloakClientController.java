@@ -305,23 +305,24 @@ public class KeycloakClientController {
 
         } catch (Exception e) {
 
-            SignupStatus errorStatus = SignupStatus.builder()
-                    .status("FAILED")
-                    .message("Provisioning failed: " + e.getMessage())
-                    .steps(new ArrayList<>())
-                    .build();
+        SignupStatus errorStatus = SignupStatus.builder()
+                .status("FAILED")
+                .message("Provisioning failed: " + e.getCause().getMessage())
+                .steps(new ArrayList<>())
+                .build();
 
-            errorStatus.addStep(
-                    "Signup",
-                    "FAILED",
-                    "Unexpected error",
-                    e.getMessage()
-            );
+        errorStatus.addStep(
+                "Signup",
+                "FAILED",
+                "Unexpected error",
+                e.getCause().getMessage()
+        );
 
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(errorStatus);
-        }
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(errorStatus);
     }
+
+}
 
 
 

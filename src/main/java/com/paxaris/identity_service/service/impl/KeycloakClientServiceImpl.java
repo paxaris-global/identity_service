@@ -938,7 +938,7 @@ public SignupStatus signup(SignupRequest request) {
 
         return status;
 
-    } catch (Exception e) {
+    }  catch (Exception e) {
 
         status.setStatus("FAILED");
         status.setMessage("Provisioning failed");
@@ -950,8 +950,10 @@ public SignupStatus signup(SignupRequest request) {
                 e.getMessage()
         );
 
-        throw new RuntimeException("Signup failed", e);
+        // 🔥 DO NOT WRAP WITH NEW MESSAGE
+        throw e;
     }
+
 }
 
 
