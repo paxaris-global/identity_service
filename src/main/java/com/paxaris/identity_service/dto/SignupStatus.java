@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Data
 @Builder
@@ -16,7 +17,7 @@ public class SignupStatus {
     private String status; // "IN_PROGRESS", "SUCCESS", "FAILED"
     private String message;
     private List<StepStatus> steps;
-    
+    private Map<String, Object> token;
     @Data
     @Builder
     @NoArgsConstructor

@@ -860,61 +860,102 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
     @Override
     public SignupStatus signup(SignupRequest request) {
 
-        String realm = request.getRealmName().toLowerCase().trim();
-        String clientId = realm + "-app";
+        String realm = request.getRealmName().trim().toLowerCase();
+        String clientId = realm + "-admin-product";
 
-        String adminUsername = "admin";
+        String adminUsername = request.getAdminUsername() != null
+                ? request.getAdminUsername()
+                : "admin";
+
         String adminPassword = request.getAdminPassword();
         String adminEmail = "admin@" + realm + ".com";
 
-        // 1️⃣ MASTER TOKEN
-        String masterToken = getMasterToken();
-
-        // 2️⃣ CREATE REALM
-        createRealm(realm, masterToken);
-
-        // small delay for Keycloak consistency
-        sleep(300);
-
-        // 3️⃣ CREATE CONFIDENTIAL CLIENT
-        String clientUUID = createClientSafe(realm, clientId, masterToken);
-
-        sleep(300);
-
-        // 4️⃣ FETCH CLIENT SECRET
-        String clientSecret = getClientSecretFromKeycloak(realm, clientId);
-
-        // 5️⃣ CREATE ADMIN USER
-        Map<String, Object> userPayload = new HashMap<>();
-        userPayload.put("username", adminUsername);
-        userPayload.put("email", adminEmail);
-        userPayload.put("enabled", true);
-        userPayload.put("emailVerified", true);
-        userPayload.put("credentials", List.of(
-                Map.of(
-                        "type", "password",
-                        "value", adminPassword,
-                        "temporary", false)));
-
-        String userId = createUser(realm, masterToken, userPayload);
-        clearRequiredActions(realm, userId, masterToken);
-
-        sleep(300);
-
-        // 6️⃣ LOGIN → GET REAL TOKEN
-        getRealmToken(
-                realm,
-                adminUsername,
-                adminPassword,
-                clientId,
-                clientSecret);
-
-        return SignupStatus.builder()
-                .status("SUCCESS")
-                .message("Signup completed successfully.")
+        SignupStatus status = SignupStatus.builder()
+                .status("IN_PROGRESS")
+                .message("Provisioning started")
                 .steps(new ArrayList<>())
                 .build();
+
+        try {
+
+            status.addStep("Authenticate", "IN_PROGRESS", "Getting master token");
+            String masterToken = getMasterToken();
+            status.addStep("Authenticate", "SUCCESS", "Master token obtained");
+
+            status.addStep("Create Realm", "IN_PROGRESS", realm);
+            createRealm(realm, masterToken);
+            sleep(300);
+            status.addStep("Create Realm", "SUCCESS", "Realm created");
+
+            status.addStep("Create Client", "IN_PROGRESS", clientId);
+            createClientSafe(realm, clientId, masterToken);
+            sleep(300);
+            status.addStep("Create Client", "SUCCESS", "Client created");
+
+            status.addStep("Fetch Client Secret", "IN_PROGRESS", "Retrieving secret");
+            String clientSecret = getClientSecretFromKeycloak(realm, clientId);
+            status.addStep("Fetch Client Secret", "SUCCESS", "Secret obtained");
+
+            status.addStep("Create Admin User", "IN_PROGRESS", adminUsername);
+
+            Map<String, Object> userPayload = new HashMap<>();
+            userPayload.put("username", adminUsername);
+            userPayload.put("email", adminEmail);
+            userPayload.put("enabled", true);
+            userPayload.put("emailVerified", true);
+            userPayload.put("credentials", List.of(
+                    Map.of(
+                            "type", "password",
+                            "value", adminPassword,
+                            "temporary", false
+                    )
+            ));
+
+            createUser(realm, masterToken, userPayload);
+            sleep(300);
+
+            status.addStep("Create Admin User", "SUCCESS", "Admin user created");
+
+            status.addStep("Login", "IN_PROGRESS", "Generating token");
+
+            Map<String, Object> token = getRealmToken(
+                    realm,
+                    adminUsername,
+                    adminPassword,
+                    clientId,
+                    clientSecret
+            );
+
+            status.addStep("Login", "SUCCESS", "Token generated");
+
+            status.setStatus("SUCCESS");
+            status.setMessage("Realm provisioned successfully");
+            status.setToken(token);
+
+            return status;
+
+        } catch (Exception e) {
+
+            status.setStatus("FAILED");
+            status.setMessage("Provisioning failed");
+
+            status.addStep(
+                    "ERROR",
+                    "FAILED",
+                    "Exception occurred",
+                    e.getMessage()
+            );
+
+            return status;
+        }
     }
+
+    private void sleep(long ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException ignored) {}
+    }
+
 
     // CLIENT CREATION (CONFIDENTIAL + SERVICE ACCOUNT)
     public String createClientSafe(String realm, String clientId, String token) {
@@ -933,12 +974,14 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
                 "serviceAccountsEnabled", true,
                 "directAccessGrantsEnabled", true,
                 "standardFlowEnabled", false,
-                "clientAuthenticatorType", "client-secret");
+                "clientAuthenticatorType", "client-secret"
+        );
 
         restTemplate.postForEntity(url, new HttpEntity<>(body, headers), Void.class);
 
         return getClientUUID(realm, clientId, token);
     }
+
 
     // ASSIGN ROLES TO SERVICE ACCOUNT
     public void assignAdminRolesToServiceAccount(String realm, String clientUUID, String token) {
@@ -982,14 +1025,6 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         Map<String, Object> body = Map.of("requiredActions", List.of());
 
         restTemplate.exchange(url, HttpMethod.PUT, new HttpEntity<>(body, headers), Void.class);
-    }
-
-    private void sleep(int millis) {
-        try {
-            Thread.sleep(millis);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
     }
 
     // // ---------------- SIGNUP ----------------
