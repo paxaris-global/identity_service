@@ -924,6 +924,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             user.put("email", adminEmail);
             user.put("enabled", true);
             user.put("emailVerified", true);
+            user.put("requiredActions", new ArrayList<>());
 
             restTemplate.postForEntity(
                     userUrl,
@@ -961,6 +962,21 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
                     resetPasswordUrl,
                     new HttpEntity<>(password, headers));
 
+            Thread.sleep(400);
+
+            // =====================
+            // 6.5 ENSURE ACCOUNT SETUP (Clear Actions)
+            // =====================
+            String userDetailUrl = config.getBaseUrl() + "/admin/realms/" + realm + "/users/" + userId;
+            ResponseEntity<Map> userResp = restTemplate.exchange(userDetailUrl, HttpMethod.GET,
+                    new HttpEntity<>(headers), Map.class);
+            Map<String, Object> userMap = userResp.getBody();
+            if (userMap != null) {
+                userMap.put("requiredActions", new ArrayList<>());
+                userMap.put("emailVerified", true);
+                userMap.put("enabled", true);
+                restTemplate.put(userDetailUrl, new HttpEntity<>(userMap, headers));
+            }
             Thread.sleep(400);
 
             // =====================
