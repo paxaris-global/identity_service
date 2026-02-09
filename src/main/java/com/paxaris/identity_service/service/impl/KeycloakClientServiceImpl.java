@@ -915,7 +915,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             String clientSecret = getClientSecretFromKeycloak(realm, clientId);
 
             // =====================
-            // 4️⃣ CREATE USER (NO PASSWORD HERE)
+            // 4️⃣ CREATE USER (WITH PASSWORD)
             // =====================
             String userUrl = config.getBaseUrl() + "/admin/realms/" + realm + "/users";
 
@@ -925,6 +925,12 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             user.put("enabled", true);
             user.put("emailVerified", true);
             user.put("requiredActions", new ArrayList<>());
+
+            Map<String, Object> password = new HashMap<>();
+            password.put("type", "password");
+            password.put("value", adminPassword);
+            password.put("temporary", false);
+            user.put("credentials", List.of(password));
 
             restTemplate.postForEntity(
                     userUrl,
@@ -948,22 +954,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             String userId = (String) ((Map) users.getBody().get(0)).get("id");
 
             // =====================
-            // 6️⃣ SET PASSWORD (NON TEMPORARY ✅)
-            // =====================
-            String resetPasswordUrl = config.getBaseUrl()
-                    + "/admin/realms/" + realm + "/users/" + userId + "/reset-password";
-
-            Map<String, Object> password = new HashMap<>();
-            password.put("type", "password");
-            password.put("value", adminPassword);
-            password.put("temporary", false); // 🔥 FIXES invalid_grant
-
-            restTemplate.put(
-                    resetPasswordUrl,
-                    new HttpEntity<>(password, headers));
-
-            Thread.sleep(400);
-
+            // 6️⃣ SET PASSWORD is now done during user creation.
             // =====================
             // 6.5 ENSURE ACCOUNT SETUP (Clear Actions)
             // =====================
