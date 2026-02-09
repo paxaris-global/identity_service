@@ -877,33 +877,62 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
                 .build();
 
         try {
-
+            // 1️⃣ Master token
             status.addStep("Authenticate", "IN_PROGRESS", "Getting master token");
             String masterToken = getMasterToken();
             status.addStep("Authenticate", "SUCCESS", "Master token obtained");
 
+            // 2️⃣ Create realm
             status.addStep("Create Realm", "IN_PROGRESS", realm);
             createRealm(realm, masterToken);
-            sleep(300);
+            Thread.sleep(300);
             status.addStep("Create Realm", "SUCCESS", "Realm created");
 
+            // 3️⃣ Create client
             status.addStep("Create Client", "IN_PROGRESS", clientId);
-            createClientSafe(realm, clientId, masterToken);
-            sleep(300);
+
+            String clientUrl = config.getBaseUrl() + "/admin/realms/" + realm + "/clients";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setBearerAuth(masterToken);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            Map<String, Object> clientBody = Map.of(
+                    "clientId", clientId,
+                    "enabled", true,
+                    "protocol", "openid-connect",
+                    "publicClient", false,
+                    "serviceAccountsEnabled", true,
+                    "directAccessGrantsEnabled", true,
+                    "standardFlowEnabled", false,
+                    "clientAuthenticatorType", "client-secret"
+            );
+
+            restTemplate.postForEntity(
+                    clientUrl,
+                    new HttpEntity<>(clientBody, headers),
+                    Void.class
+            );
+
+            Thread.sleep(300);
             status.addStep("Create Client", "SUCCESS", "Client created");
 
+            // 4️⃣ Client secret
             status.addStep("Fetch Client Secret", "IN_PROGRESS", "Retrieving secret");
             String clientSecret = getClientSecretFromKeycloak(realm, clientId);
             status.addStep("Fetch Client Secret", "SUCCESS", "Secret obtained");
 
+            // 5️⃣ Create admin user
             status.addStep("Create Admin User", "IN_PROGRESS", adminUsername);
 
-            Map<String, Object> userPayload = new HashMap<>();
-            userPayload.put("username", adminUsername);
-            userPayload.put("email", adminEmail);
-            userPayload.put("enabled", true);
-            userPayload.put("emailVerified", true);
-            userPayload.put("credentials", List.of(
+            String userUrl = config.getBaseUrl() + "/admin/realms/" + realm + "/users";
+
+            Map<String, Object> userBody = new HashMap<>();
+            userBody.put("username", adminUsername);
+            userBody.put("email", adminEmail);
+            userBody.put("enabled", true);
+            userBody.put("emailVerified", true);
+            userBody.put("credentials", List.of(
                     Map.of(
                             "type", "password",
                             "value", adminPassword,
@@ -911,11 +940,16 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
                     )
             ));
 
-            createUser(realm, masterToken, userPayload);
-            sleep(300);
+            restTemplate.postForEntity(
+                    userUrl,
+                    new HttpEntity<>(userBody, headers),
+                    Void.class
+            );
 
+            Thread.sleep(300);
             status.addStep("Create Admin User", "SUCCESS", "Admin user created");
 
+            // 6️⃣ Login → token
             status.addStep("Login", "IN_PROGRESS", "Generating token");
 
             Map<String, Object> token = getRealmToken(
@@ -935,96 +969,11 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             return status;
 
         } catch (Exception e) {
-
             status.setStatus("FAILED");
             status.setMessage("Provisioning failed");
-
-            status.addStep(
-                    "ERROR",
-                    "FAILED",
-                    "Exception occurred",
-                    e.getMessage()
-            );
-
+            status.addStep("ERROR", "FAILED", "Exception occurred", e.getMessage());
             return status;
         }
-    }
-
-    private void sleep(long ms) {
-        try {
-            Thread.sleep(ms);
-        } catch (InterruptedException ignored) {}
-    }
-
-
-    // CLIENT CREATION (CONFIDENTIAL + SERVICE ACCOUNT)
-    public String createClientSafe(String realm, String clientId, String token) {
-
-        String url = config.getBaseUrl() + "/admin/realms/" + realm + "/clients";
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(token);
-        headers.setContentType(MediaType.APPLICATION_JSON);
-
-        Map<String, Object> body = Map.of(
-                "clientId", clientId,
-                "enabled", true,
-                "protocol", "openid-connect",
-                "publicClient", false,
-                "serviceAccountsEnabled", true,
-                "directAccessGrantsEnabled", true,
-                "standardFlowEnabled", false,
-                "clientAuthenticatorType", "client-secret"
-        );
-
-        restTemplate.postForEntity(url, new HttpEntity<>(body, headers), Void.class);
-
-        return getClientUUID(realm, clientId, token);
-    }
-
-
-    // ASSIGN ROLES TO SERVICE ACCOUNT
-    public void assignAdminRolesToServiceAccount(String realm, String clientUUID, String token) {
-
-        String serviceAccountUrl = config.getBaseUrl()
-                + "/admin/realms/" + realm
-                + "/clients/" + clientUUID
-                + "/service-account-user";
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(token);
-
-        ResponseEntity<Map> response = restTemplate.exchange(
-                serviceAccountUrl,
-                HttpMethod.GET,
-                new HttpEntity<>(headers),
-                Map.class);
-
-        String serviceUserId = (String) response.getBody().get("id");
-
-        List<String> roles = List.of(
-                "manage-realm",
-                "manage-users",
-                "manage-clients",
-                "create-client",
-                "impersonation");
-
-        for (String role : roles) {
-            assignRealmManagementRoleToUser(realm, serviceUserId, role, token);
-        }
-    }
-
-    // CLEAR REQUIRED ACTIONS
-    public void clearRequiredActions(String realm, String userId, String token) {
-        String url = config.getBaseUrl() + "/admin/realms/" + realm + "/users/" + userId;
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(token);
-        headers.setContentType(MediaType.APPLICATION_JSON);
-
-        Map<String, Object> body = Map.of("requiredActions", List.of());
-
-        restTemplate.exchange(url, HttpMethod.PUT, new HttpEntity<>(body, headers), Void.class);
     }
 
     // // ---------------- SIGNUP ----------------
