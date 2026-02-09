@@ -897,16 +897,25 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             headers.setBearerAuth(masterToken);
             headers.setContentType(MediaType.APPLICATION_JSON);
 
-            Map<String, Object> clientBody = Map.of(
-                    "clientId", clientId,
-                    "enabled", true,
-                    "protocol", "openid-connect",
-                    "publicClient", false,
-                    "serviceAccountsEnabled", true,
-                    "directAccessGrantsEnabled", true,
-                    "standardFlowEnabled", false,
-                    "clientAuthenticatorType", "client-secret"
-            );
+            Map<String, Object> clientBody = new HashMap<>();
+
+            clientBody.put("clientId", clientId);
+            clientBody.put("enabled", true);
+            clientBody.put("protocol", "openid-connect");
+
+            clientBody.put("publicClient", false);
+            clientBody.put("bearerOnly", false);
+
+            clientBody.put("directAccessGrantsEnabled", true);   // PASSWORD GRANT ✅
+            clientBody.put("standardFlowEnabled", true);         // REQUIRED internally
+            clientBody.put("serviceAccountsEnabled", false);     // not needed for user login
+
+            clientBody.put("clientAuthenticatorType", "client-secret");
+
+            clientBody.put("attributes", Map.of(
+                    "oauth2.device.authorization.grant.enabled", "false",
+                    "client.secret.creation.time", String.valueOf(System.currentTimeMillis())
+            ));
 
             restTemplate.postForEntity(
                     clientUrl,
