@@ -82,11 +82,11 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             throw new RuntimeException("Failed to connect to Keycloak token endpoint.", e);
         }
     }
- @Override
+
+    @Override
     public String getMasterTokenInternally() {
         return getMasterToken();
     }
-    
 
     @Override
     public Map<String, Object> getRealmToken(String realm,
@@ -489,9 +489,9 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
     // ---------------- ROLE ----------------
     @Override
     public void createClientRoles(String realm,
-                                  String clientName,
-                                  List<RoleCreationRequest> roleRequests,
-                                  String token) {
+            String clientName,
+            List<RoleCreationRequest> roleRequests,
+            String token) {
 
         log.info("Creating {} roles for client '{}' in realm '{}'",
                 roleRequests.size(), clientName, realm);
@@ -524,8 +524,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
             Map<String, Object> body = Map.of(
                     "name", roleName,
-                    "description", role.getDescription()
-            );
+                    "description", role.getDescription());
 
             try {
                 // ==========================
@@ -534,8 +533,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
                 restTemplate.postForEntity(
                         keycloakUrl,
                         new HttpEntity<>(body, headers),
-                        String.class
-                );
+                        String.class);
 
                 log.info("✅ Created role '{}' in Keycloak", roleName);
 
@@ -567,7 +565,6 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
                         .toBodilessEntity()
                         .block();
 
-
                 log.info("📦 Role '{}' registered in Project Manager", roleName);
 
             } catch (Exception e) {
@@ -578,12 +575,9 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
         if (!failedRoles.isEmpty()) {
             throw new RuntimeException(
-                    "Failed to create roles: " + String.join(", ", failedRoles)
-            );
+                    "Failed to create roles: " + String.join(", ", failedRoles));
         }
     }
-
-
 
     // -------------------------------getClientRoles----------------------------------
     @Override
@@ -722,68 +716,68 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
     // ---------------- ROLE ASSIGN ----------------
     @Override
-public void assignClientRolesByName(
-        String realm,
-        String username,
-        String clientName,
-        String token,
-        List<AssignRoleRequest> roles) {
+    public void assignClientRolesByName(
+            String realm,
+            String username,
+            String clientName,
+            String token,
+            List<AssignRoleRequest> roles) {
 
-    // 1️⃣ Resolve userId from username
-    String userId = resolveUserId(realm, username, token);
+        // 1️⃣ Resolve userId from username
+        String userId = resolveUserId(realm, username, token);
 
-    // 2️⃣ Resolve client UUID from clientName
-    String clientUUID = resolveClientUUID(realm, clientName, token);
+        // 2️⃣ Resolve client UUID from clientName
+        String clientUUID = resolveClientUUID(realm, clientName, token);
 
-    // 3️⃣ Resolve each role by name → minimal payload (id + name)
-    List<Map<String, Object>> resolvedRoles = new ArrayList<>();
+        // 3️⃣ Resolve each role by name → minimal payload (id + name)
+        List<Map<String, Object>> resolvedRoles = new ArrayList<>();
 
-    for (AssignRoleRequest role : roles) {
-        if (role.getName() == null || role.getName().isBlank()) {
-            throw new IllegalArgumentException("Role name must not be null or empty");
+        for (AssignRoleRequest role : roles) {
+            if (role.getName() == null || role.getName().isBlank()) {
+                throw new IllegalArgumentException("Role name must not be null or empty");
+            }
+
+            Map<String, Object> resolvedRole = resolveClientRoleByName(realm, clientUUID, role.getName(), token);
+            resolvedRoles.add(resolvedRole);
         }
 
-        Map<String, Object> resolvedRole = resolveClientRoleByName(realm, clientUUID, role.getName(), token);
-        resolvedRoles.add(resolvedRole);
+        // 4️⃣ Assign resolved roles to user
+        assignClientRolesToUser(realm, userId, clientUUID, resolvedRoles, token);
+
+        // 5️⃣ Log cURL command for debugging
+        logCurlCommand(realm, userId, clientUUID, resolvedRoles, token);
+
+        log.info(
+                "✅ Successfully assigned roles {} to user '{}' in realm '{}' for client '{}'",
+                resolvedRoles.stream().map(r -> r.get("name")).toList(),
+                username,
+                realm,
+                clientName);
     }
 
-    // 4️⃣ Assign resolved roles to user
-    assignClientRolesToUser(realm, userId, clientUUID, resolvedRoles, token);
+    private void logCurlCommand(String realm, String userId, String clientUUID,
+            List<Map<String, Object>> roles, String token) {
 
-    // 5️⃣ Log cURL command for debugging
-    logCurlCommand(realm, userId, clientUUID, resolvedRoles, token);
+        String url = config.getBaseUrl()
+                + "/admin/realms/" + realm
+                + "/users/" + userId
+                + "/role-mappings/clients/" + clientUUID;
 
-    log.info(
-            "✅ Successfully assigned roles {} to user '{}' in realm '{}' for client '{}'",
-            resolvedRoles.stream().map(r -> r.get("name")).toList(),
-            username,
-            realm,
-            clientName);
-}
+        // Convert roles list to JSON string (pretty print optional)
+        String rolesJson;
+        try {
+            rolesJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(roles);
+        } catch (Exception e) {
+            rolesJson = roles.toString();
+        }
 
-private void logCurlCommand(String realm, String userId, String clientUUID,
-                            List<Map<String, Object>> roles, String token) {
+        String curl = "curl --location '" + url + "' \\\n"
+                + "  --header 'Content-Type: application/json' \\\n"
+                + "  --header 'Authorization: Bearer " + token + "' \\\n"
+                + "  --data-raw '" + rolesJson.replace("'", "\\'") + "'";
 
-    String url = config.getBaseUrl()
-            + "/admin/realms/" + realm
-            + "/users/" + userId
-            + "/role-mappings/clients/" + clientUUID;
-
-    // Convert roles list to JSON string (pretty print optional)
-    String rolesJson;
-    try {
-        rolesJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(roles);
-    } catch (Exception e) {
-        rolesJson = roles.toString();
+        log.info("🔹 Equivalent cURL command to assign roles:\n{}", curl);
     }
-
-    String curl = "curl --location '" + url + "' \\\n"
-            + "  --header 'Content-Type: application/json' \\\n"
-            + "  --header 'Authorization: Bearer " + token + "' \\\n"
-            + "  --data-raw '" + rolesJson.replace("'", "\\'") + "'";
-
-    log.info("🔹 Equivalent cURL command to assign roles:\n{}", curl);
-}
 
     private String resolveClientUUID(String realm, String clientName, String token) {
         String url = config.getBaseUrl()
@@ -862,63 +856,65 @@ private void logCurlCommand(String realm, String userId, String clientUUID,
         return headers;
     }
 
+    // ------------------SIGNUP---------------------------
+    @Override
+    public SignupStatus signup(SignupRequest request) {
 
-//    ------------------SIGNUP---------------------------
-@Override
-public Map<String, Object> signup(SignupRequest request) {
+        String realm = request.getRealmName().toLowerCase().trim();
+        String clientId = realm + "-app";
 
-    String realm = request.getRealmName().toLowerCase().trim();
-    String clientId = realm + "-app";
+        String adminUsername = "admin";
+        String adminPassword = request.getAdminPassword();
+        String adminEmail = "admin@" + realm + ".com";
 
-    String adminUsername = "admin";
-    String adminPassword = request.getAdminPassword();
-    String adminEmail = "admin@" + realm + ".com";
+        // 1️⃣ MASTER TOKEN
+        String masterToken = getMasterToken();
 
-    // 1️⃣ MASTER TOKEN
-    String masterToken = getMasterToken();
+        // 2️⃣ CREATE REALM
+        createRealm(realm, masterToken);
 
-    // 2️⃣ CREATE REALM
-    createRealm(realm, masterToken);
+        // small delay for Keycloak consistency
+        sleep(300);
 
-    // small delay for Keycloak consistency
-    sleep(300);
+        // 3️⃣ CREATE CONFIDENTIAL CLIENT
+        String clientUUID = createClientSafe(realm, clientId, masterToken);
 
-    // 3️⃣ CREATE CONFIDENTIAL CLIENT
-    String clientUUID = createClientSafe(realm, clientId, masterToken);
+        sleep(300);
 
-    sleep(300);
+        // 4️⃣ FETCH CLIENT SECRET
+        String clientSecret = getClientSecretFromKeycloak(realm, clientId);
 
-    // 4️⃣ FETCH CLIENT SECRET
-    String clientSecret = getClientSecretFromKeycloak(realm, clientId);
+        // 5️⃣ CREATE ADMIN USER
+        Map<String, Object> userPayload = new HashMap<>();
+        userPayload.put("username", adminUsername);
+        userPayload.put("email", adminEmail);
+        userPayload.put("enabled", true);
+        userPayload.put("emailVerified", true);
+        userPayload.put("credentials", List.of(
+                Map.of(
+                        "type", "password",
+                        "value", adminPassword,
+                        "temporary", false)));
 
-    // 5️⃣ CREATE ADMIN USER
-    Map<String, Object> userPayload = new HashMap<>();
-    userPayload.put("username", adminUsername);
-    userPayload.put("email", adminEmail);
-    userPayload.put("enabled", true);
-    userPayload.put("emailVerified", true);
-    userPayload.put("credentials", List.of(
-            Map.of(
-                    "type", "password",
-                    "value", adminPassword,
-                    "temporary", false
-            )
-    ));
+        String userId = createUser(realm, masterToken, userPayload);
+        clearRequiredActions(realm, userId, masterToken);
 
-    createUser(realm, masterToken, userPayload);
+        sleep(300);
 
-    sleep(300);
+        // 6️⃣ LOGIN → GET REAL TOKEN
+        getRealmToken(
+                realm,
+                adminUsername,
+                adminPassword,
+                clientId,
+                clientSecret);
 
-    // 6️⃣ LOGIN → GET REAL TOKEN
-    return getRealmToken(
-            realm,
-            adminUsername,
-            adminPassword,
-            clientId,
-            clientSecret
-    );
-}
-
+        return SignupStatus.builder()
+                .status("SUCCESS")
+                .message("Signup completed successfully.")
+                .steps(new ArrayList<>())
+                .build();
+    }
 
     // CLIENT CREATION (CONFIDENTIAL + SERVICE ACCOUNT)
     public String createClientSafe(String realm, String clientId, String token) {
@@ -937,14 +933,12 @@ public Map<String, Object> signup(SignupRequest request) {
                 "serviceAccountsEnabled", true,
                 "directAccessGrantsEnabled", true,
                 "standardFlowEnabled", false,
-                "clientAuthenticatorType", "client-secret"
-        );
+                "clientAuthenticatorType", "client-secret");
 
         restTemplate.postForEntity(url, new HttpEntity<>(body, headers), Void.class);
 
         return getClientUUID(realm, clientId, token);
     }
-
 
     // ASSIGN ROLES TO SERVICE ACCOUNT
     public void assignAdminRolesToServiceAccount(String realm, String clientUUID, String token) {
@@ -961,8 +955,7 @@ public Map<String, Object> signup(SignupRequest request) {
                 serviceAccountUrl,
                 HttpMethod.GET,
                 new HttpEntity<>(headers),
-                Map.class
-        );
+                Map.class);
 
         String serviceUserId = (String) response.getBody().get("id");
 
@@ -971,8 +964,7 @@ public Map<String, Object> signup(SignupRequest request) {
                 "manage-users",
                 "manage-clients",
                 "create-client",
-                "impersonation"
-        );
+                "impersonation");
 
         for (String role : roles) {
             assignRealmManagementRoleToUser(realm, serviceUserId, role, token);
@@ -992,202 +984,238 @@ public Map<String, Object> signup(SignupRequest request) {
         restTemplate.exchange(url, HttpMethod.PUT, new HttpEntity<>(body, headers), Void.class);
     }
 
+    private void sleep(int millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
 
+    // // ---------------- SIGNUP ----------------
+    // @Override
+    // public SignupStatus signup(SignupRequest request, MultipartFile sourceZip) {
+    // // Validate required inputs first
+    // if (request == null) {
+    // throw new IllegalArgumentException("SignupRequest cannot be null");
+    // }
+    //
+    // SignupStatus status = SignupStatus.builder()
+    // .status("IN_PROGRESS")
+    // .message("Signup process started")
+    // .steps(new ArrayList<>())
+    // .build();
+    //
+    // log.info("🚀 Starting comprehensive signup process for product '{}', realm
+    // '{}'",
+    // request.getClientId(), request.getRealmName());
+    // if (sourceZip == null || sourceZip.isEmpty()) {
+    // throw new IllegalArgumentException("Source ZIP file is required");
+    // }
+    // if (request.getAdminUser() == null) {
+    // throw new IllegalArgumentException("Admin user information is required");
+    // }
+    //
+    // String masterToken = null;
+    // String realm = request.getRealmName() != null ? request.getRealmName() :
+    // "default-realm";
+    // String clientId = request.getClientId() != null ? request.getClientId() :
+    // "default-client";
+    // String adminUsername = request.getAdminUser().getUsername() != null ?
+    // request.getAdminUser().getUsername()
+    // : "admin";
+    // Path extractedCodePath = null;
+    //
+    // try {
+    // // Step 1: Get Master Token
+    // status.addStep("Get Master Token", "IN_PROGRESS", "Authenticating with
+    // Keycloak master realm");
+    // log.info("🔐 Step 1: Getting master token");
+    // masterToken = getMasterToken();
+    // status.addStep("Get Master Token", "SUCCESS", "Master token retrieved
+    // successfully");
+    //
+    // // Step 2: Create Realm
+    // status.addStep("Create Realm", "IN_PROGRESS", "Creating Keycloak realm: " +
+    // realm);
+    // log.info("🧱 Step 2: Creating realm '{}'", realm);
+    // createRealm(realm, masterToken);
+    // status.addStep("Create Realm", "SUCCESS", "Realm '" + realm + "' created
+    // successfully");
+    //
+    // // Step 3: Create Client
+    // status.addStep("Create Client", "IN_PROGRESS", "Creating Keycloak client: " +
+    // clientId);
+    // log.info("🧩 Step 3: Creating client '{}'", clientId);
+    // String clientUUID = createClient(realm, clientId, request.isPublicClient(),
+    // masterToken);
+    // status.addStep("Create Client", "SUCCESS",
+    // "Client '" + clientId + "' created successfully with UUID: " + clientUUID);
+    //
+    // // Step 4: Create Admin User
+    // status.addStep("Create Admin User", "IN_PROGRESS", "Creating admin user: " +
+    // adminUsername);
+    // log.info("👤 Step 4: Creating admin user '{}'", adminUsername);
+    //
+    // Map<String, Object> userMap = new HashMap<>();
+    // userMap.put("username", adminUsername);
+    // userMap.put("email", request.getAdminUser().getEmail());
+    // userMap.put("firstName", request.getAdminUser().getFirstName());
+    // userMap.put("lastName", request.getAdminUser().getLastName());
+    // userMap.put("enabled", true);
+    //
+    // Map<String, Object> credentials = Map.of(
+    // "type", "password",
+    // "value", request.getAdminUser().getPassword(),
+    // "temporary", false);
+    // userMap.put("credentials", List.of(credentials));
+    //
+    // String userId = createUser(realm, masterToken, userMap);
+    // status.addStep("Create Admin User", "SUCCESS", "Admin user '" + adminUsername
+    // + "' created successfully");
+    //
+    // // Step 5: Assign default roles
+    // status.addStep("Assign Admin Roles", "IN_PROGRESS", "Assigning default admin
+    // roles");
+    // log.info("🔑 Step 5: Assigning default admin roles to '{}'", adminUsername);
+    // List<String> defaultRoles = List.of("create-client", "impersonation",
+    // "manage-realm", "manage-users",
+    // "manage-clients");
+    // for (String role : defaultRoles) {
+    // assignRealmManagementRoleToUser(realm, userId, role, masterToken);
+    // }
+    // status.addStep("Assign Admin Roles", "SUCCESS", "Default admin roles assigned
+    // successfully");
 
-//    // ---------------- SIGNUP ----------------
-    //    @Override
-    //    public SignupStatus signup(SignupRequest request, MultipartFile sourceZip) {
-    //        // Validate required inputs first
-    //        if (request == null) {
-    //            throw new IllegalArgumentException("SignupRequest cannot be null");
-    //        }
+    // // Step 6: Send data to Project Management Service
+    // status.addStep("Update Project Manager", "IN_PROGRESS",
+    // "Sending project info to Project Management Service");
+    // log.info("📤 Step 6: Sending project info to Project Management Service...");
     //
-    //        SignupStatus status = SignupStatus.builder()
-    //                .status("IN_PROGRESS")
-    //                .message("Signup process started")
-    //                .steps(new ArrayList<>())
-    //                .build();
+    // UrlEntry urlEntry = new UrlEntry();
+    // urlEntry.setUrl(request.getUrl());
+    // urlEntry.setUri(request.getUri());
+    // urlEntry.setHttpMethod(request.getHttpMethod());
     //
-    //        log.info("🚀 Starting comprehensive signup process for product '{}', realm '{}'",
-    //                request.getClientId(), request.getRealmName());
-    //        if (sourceZip == null || sourceZip.isEmpty()) {
-    //            throw new IllegalArgumentException("Source ZIP file is required");
-    //        }
-    //        if (request.getAdminUser() == null) {
-    //            throw new IllegalArgumentException("Admin user information is required");
-    //        }
+    // RoleRequest roleRequest = new RoleRequest();
+    // roleRequest.setRealmName(realm);
+    // roleRequest.setProductName(clientId);
+    // roleRequest.setRoleName("admin");
+    // roleRequest.setUrls(List.of(urlEntry));
     //
-    //        String masterToken = null;
-    //        String realm = request.getRealmName() != null ? request.getRealmName() : "default-realm";
-    //        String clientId = request.getClientId() != null ? request.getClientId() : "default-client";
-    //        String adminUsername = request.getAdminUser().getUsername() != null ? request.getAdminUser().getUsername()
-    //                : "admin";
-    //        Path extractedCodePath = null;
+    // if (projectManagementBaseUrl == null || projectManagementBaseUrl.isEmpty()) {
+    // log.warn("Project Management Base URL is not configured, skipping project
+    // manager update");
+    // status.addStep("Update Project Manager", "SKIPPED", "Project Management Base
+    // URL not configured");
+    // } else {
+    // WebClient webClient = WebClient.builder()
+    // .baseUrl(projectManagementBaseUrl)
+    // .build();
     //
-    //        try {
-    //            // Step 1: Get Master Token
-    //            status.addStep("Get Master Token", "IN_PROGRESS", "Authenticating with Keycloak master realm");
-    //            log.info("🔐 Step 1: Getting master token");
-    //            masterToken = getMasterToken();
-    //            status.addStep("Get Master Token", "SUCCESS", "Master token retrieved successfully");
+    // webClient.post()
+    // .uri("/project/roles/save-or-update")
+    // .bodyValue(roleRequest)
+    // .retrieve()
+    // .toBodilessEntity()
+    // .block();
     //
-    //            // Step 2: Create Realm
-    //            status.addStep("Create Realm", "IN_PROGRESS", "Creating Keycloak realm: " + realm);
-    //            log.info("🧱 Step 2: Creating realm '{}'", realm);
-    //            createRealm(realm, masterToken);
-    //            status.addStep("Create Realm", "SUCCESS", "Realm '" + realm + "' created successfully");
+    // status.addStep("Update Project Manager", "SUCCESS", "Project info sent to
+    // Project Management Service");
+    // }
     //
-    //            // Step 3: Create Client
-    //            status.addStep("Create Client", "IN_PROGRESS", "Creating Keycloak client: " + clientId);
-    //            log.info("🧩 Step 3: Creating client '{}'", clientId);
-    //            String clientUUID = createClient(realm, clientId, request.isPublicClient(), masterToken);
-    //            status.addStep("Create Client", "SUCCESS",
-    //                    "Client '" + clientId + "' created successfully with UUID: " + clientUUID);
+    // // Step 7: Extract ZIP file
+    // status.addStep("Extract Application Code", "IN_PROGRESS", "Extracting
+    // uploaded ZIP file");
+    // log.info("📦 Step 7: Extracting application code from ZIP file");
+    // extractedCodePath = Files.createTempDirectory("signup-extract-" +
+    // System.currentTimeMillis());
+    // extractZipFile(sourceZip, extractedCodePath);
+    // status.addStep("Extract Application Code", "SUCCESS", "Application code
+    // extracted successfully");
     //
-    //            // Step 4: Create Admin User
-    //            status.addStep("Create Admin User", "IN_PROGRESS", "Creating admin user: " + adminUsername);
-    //            log.info("👤 Step 4: Creating admin user '{}'", adminUsername);
+    // // Step 8: Generate repository name using realm, admin username, and client
+    // name
+    // String repoName = ProvisioningService.generateRepositoryName(realm,
+    // adminUsername, clientId);
+    // status.addStep("Generate Repository Name", "SUCCESS", "Repository name
+    // generated: " + repoName);
+    // log.info("📝 Step 8: Generated repository name: {}", repoName);
     //
-    //            Map<String, Object> userMap = new HashMap<>();
-    //            userMap.put("username", adminUsername);
-    //            userMap.put("email", request.getAdminUser().getEmail());
-    //            userMap.put("firstName", request.getAdminUser().getFirstName());
-    //            userMap.put("lastName", request.getAdminUser().getLastName());
-    //            userMap.put("enabled", true);
+    // // Step 9: Create GitHub Repository
+    // status.addStep("Create GitHub Repository", "IN_PROGRESS", "Creating GitHub
+    // repository: " + repoName);
+    // log.info("🐙 Step 9: Creating GitHub repository '{}'", repoName);
+    // provisioningService.createRepo(repoName);
+    // status.addStep("Create GitHub Repository", "SUCCESS",
+    // "GitHub repository '" + repoName + "' created successfully");
     //
-    //            Map<String, Object> credentials = Map.of(
-    //                    "type", "password",
-    //                    "value", request.getAdminUser().getPassword(),
-    //                    "temporary", false);
-    //            userMap.put("credentials", List.of(credentials));
+    // // Step 10: Upload code to GitHub
+    // status.addStep("Upload Code to GitHub", "IN_PROGRESS", "Uploading application
+    // code to GitHub");
+    // log.info("⬆️ Step 10: Uploading code to GitHub repository");
+    // uploadDirectoryToGitHub(extractedCodePath, repoName); // <--- This call stays
+    // the same
+    // status.addStep("Upload Code to GitHub", "SUCCESS", "Code uploaded to GitHub
+    // successfully");
     //
-    //            String userId = createUser(realm, masterToken, userMap);
-    //            status.addStep("Create Admin User", "SUCCESS", "Admin user '" + adminUsername + "' created successfully");
+    // // Cleanup extracted code
+    // if (extractedCodePath != null && Files.exists(extractedCodePath)) {
+    // try {
+    // Files.walk(extractedCodePath)
+    // .sorted(java.util.Comparator.reverseOrder())
+    // .forEach(path -> {
+    // try {
+    // Files.delete(path);
+    // } catch (Exception ignored) {
+    // }
+    // });
+    // } catch (Exception e) {
+    // log.warn("Failed to cleanup extracted code directory: {}", e.getMessage());
+    // }
+    // }
     //
-    //            // Step 5: Assign default roles
-    //            status.addStep("Assign Admin Roles", "IN_PROGRESS", "Assigning default admin roles");
-    //            log.info("🔑 Step 5: Assigning default admin roles to '{}'", adminUsername);
-    //            List<String> defaultRoles = List.of("create-client", "impersonation", "manage-realm", "manage-users",
-    //                    "manage-clients");
-    //            for (String role : defaultRoles) {
-    //                assignRealmManagementRoleToUser(realm, userId, role, masterToken);
-    //            }
-    //            status.addStep("Assign Admin Roles", "SUCCESS", "Default admin roles assigned successfully");
-
-//            // Step 6: Send data to Project Management Service
-//            status.addStep("Update Project Manager", "IN_PROGRESS",
-//                    "Sending project info to Project Management Service");
-//            log.info("📤 Step 6: Sending project info to Project Management Service...");
-//
-//            UrlEntry urlEntry = new UrlEntry();
-//            urlEntry.setUrl(request.getUrl());
-//            urlEntry.setUri(request.getUri());
-//            urlEntry.setHttpMethod(request.getHttpMethod());
-//
-//            RoleRequest roleRequest = new RoleRequest();
-//            roleRequest.setRealmName(realm);
-//            roleRequest.setProductName(clientId);
-//            roleRequest.setRoleName("admin");
-//            roleRequest.setUrls(List.of(urlEntry));
-//
-//            if (projectManagementBaseUrl == null || projectManagementBaseUrl.isEmpty()) {
-//                log.warn("Project Management Base URL is not configured, skipping project manager update");
-//                status.addStep("Update Project Manager", "SKIPPED", "Project Management Base URL not configured");
-//            } else {
-//                WebClient webClient = WebClient.builder()
-//                        .baseUrl(projectManagementBaseUrl)
-//                        .build();
-//
-//                webClient.post()
-//                        .uri("/project/roles/save-or-update")
-//                        .bodyValue(roleRequest)
-//                        .retrieve()
-//                        .toBodilessEntity()
-//                        .block();
-//
-//                status.addStep("Update Project Manager", "SUCCESS", "Project info sent to Project Management Service");
-//            }
-//
-//            // Step 7: Extract ZIP file
-//            status.addStep("Extract Application Code", "IN_PROGRESS", "Extracting uploaded ZIP file");
-//            log.info("📦 Step 7: Extracting application code from ZIP file");
-//            extractedCodePath = Files.createTempDirectory("signup-extract-" + System.currentTimeMillis());
-//            extractZipFile(sourceZip, extractedCodePath);
-//            status.addStep("Extract Application Code", "SUCCESS", "Application code extracted successfully");
-//
-//            // Step 8: Generate repository name using realm, admin username, and client name
-//            String repoName = ProvisioningService.generateRepositoryName(realm, adminUsername, clientId);
-//            status.addStep("Generate Repository Name", "SUCCESS", "Repository name generated: " + repoName);
-//            log.info("📝 Step 8: Generated repository name: {}", repoName);
-//
-//            // Step 9: Create GitHub Repository
-//            status.addStep("Create GitHub Repository", "IN_PROGRESS", "Creating GitHub repository: " + repoName);
-//            log.info("🐙 Step 9: Creating GitHub repository '{}'", repoName);
-//            provisioningService.createRepo(repoName);
-//            status.addStep("Create GitHub Repository", "SUCCESS",
-//                    "GitHub repository '" + repoName + "' created successfully");
-//
-//            // Step 10: Upload code to GitHub
-//            status.addStep("Upload Code to GitHub", "IN_PROGRESS", "Uploading application code to GitHub");
-//            log.info("⬆️ Step 10: Uploading code to GitHub repository");
-//            uploadDirectoryToGitHub(extractedCodePath, repoName); // <--- This call stays the same
-//            status.addStep("Upload Code to GitHub", "SUCCESS", "Code uploaded to GitHub successfully");
-//
-//            // Cleanup extracted code
-//            if (extractedCodePath != null && Files.exists(extractedCodePath)) {
-//                try {
-//                    Files.walk(extractedCodePath)
-//                            .sorted(java.util.Comparator.reverseOrder())
-//                            .forEach(path -> {
-//                                try {
-//                                    Files.delete(path);
-//                                } catch (Exception ignored) {
-//                                }
-//                            });
-//                } catch (Exception e) {
-//                    log.warn("Failed to cleanup extracted code directory: {}", e.getMessage());
-//                }
-//            }
-//
-//            status.setStatus("SUCCESS");
-//            status.setMessage("Signup process completed successfully");
-//            log.info("🎉 Signup process completed successfully for realm '{}'", realm);
-//
-//            return status;
-//
-//        } catch (Exception e) {
-//            log.error("💥 Signup process failed: {}", e.getMessage(), e);
-//            status.setStatus("FAILED");
-//            status.setMessage("Signup process failed: " + e.getMessage());
-//
-//            // Mark the last in-progress step as failed
-//            if (!status.getSteps().isEmpty()) {
-//                SignupStatus.StepStatus lastStep = status.getSteps().get(status.getSteps().size() - 1);
-//                if ("IN_PROGRESS".equals(lastStep.getStatus())) {
-//                    lastStep.setStatus("FAILED");
-//                    lastStep.setError(e.getMessage());
-//                }
-//            }
-//
-//            // Cleanup on failure
-//            if (extractedCodePath != null && Files.exists(extractedCodePath)) {
-//                try {
-//                    Files.walk(extractedCodePath)
-//                            .sorted(java.util.Comparator.reverseOrder())
-//                            .forEach(path -> {
-//                                try {
-//                                    Files.delete(path);
-//                                } catch (Exception ignored) {
-//                                }
-//                            });
-//                } catch (Exception cleanupEx) {
-//                    log.warn("Failed to cleanup extracted code directory: {}", cleanupEx.getMessage());
-//                }
-//            }
-//
-//            throw new RuntimeException("Signup failed: " + e.getMessage(), e);
-//        }
-//    }
+    // status.setStatus("SUCCESS");
+    // status.setMessage("Signup process completed successfully");
+    // log.info("🎉 Signup process completed successfully for realm '{}'", realm);
+    //
+    // return status;
+    //
+    // } catch (Exception e) {
+    // log.error("💥 Signup process failed: {}", e.getMessage(), e);
+    // status.setStatus("FAILED");
+    // status.setMessage("Signup process failed: " + e.getMessage());
+    //
+    // // Mark the last in-progress step as failed
+    // if (!status.getSteps().isEmpty()) {
+    // SignupStatus.StepStatus lastStep =
+    // status.getSteps().get(status.getSteps().size() - 1);
+    // if ("IN_PROGRESS".equals(lastStep.getStatus())) {
+    // lastStep.setStatus("FAILED");
+    // lastStep.setError(e.getMessage());
+    // }
+    // }
+    //
+    // // Cleanup on failure
+    // if (extractedCodePath != null && Files.exists(extractedCodePath)) {
+    // try {
+    // Files.walk(extractedCodePath)
+    // .sorted(java.util.Comparator.reverseOrder())
+    // .forEach(path -> {
+    // try {
+    // Files.delete(path);
+    // } catch (Exception ignored) {
+    // }
+    // });
+    // } catch (Exception cleanupEx) {
+    // log.warn("Failed to cleanup extracted code directory: {}",
+    // cleanupEx.getMessage());
+    // }
+    // }
+    //
+    // throw new RuntimeException("Signup failed: " + e.getMessage(), e);
+    // }
+    // }
 
     /**
      * Extract ZIP file using Apache Commons Compress for better compatibility
@@ -1288,66 +1316,72 @@ public Map<String, Object> signup(SignupRequest request) {
 
     // ---------------- UTILITY ----------------
     // private String resolveUserId(String realm, String username, String token) {
-    //     log.info("Resolving user ID for username '{}' in realm '{}'", username, realm);
-    //     String url = config.getBaseUrl() + "/admin/realms/" + realm + "/users?username=" + username;
-    //     HttpHeaders headers = new HttpHeaders();
-    //     headers.setBearerAuth(token);
+    // log.info("Resolving user ID for username '{}' in realm '{}'", username,
+    // realm);
+    // String url = config.getBaseUrl() + "/admin/realms/" + realm +
+    // "/users?username=" + username;
+    // HttpHeaders headers = new HttpHeaders();
+    // headers.setBearerAuth(token);
 
-    //     try {
-    //         ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers),
-    //                 String.class);
-    //         List<Map<String, Object>> users = objectMapper.readValue(response.getBody(), new TypeReference<>() {
-    //         });
-    //         if (users.isEmpty()) {
-    //             log.error("User not found: {}", username);
-    //             throw new RuntimeException("User not found: " + username);
-    //         }
-    //         String userId = (String) users.get(0).get("id");
-    //         log.info("Resolved user ID: '{}' for username '{}'", userId, username);
-    //         return userId;
-    //     } catch (Exception e) {
-    //         log.error("Failed to resolve user UUID for '{}': {}", username, e.getMessage(), e);
-    //         throw new RuntimeException("Failed to resolve user UUID for: " + username, e);
-    //     }
+    // try {
+    // ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET,
+    // new HttpEntity<>(headers),
+    // String.class);
+    // List<Map<String, Object>> users = objectMapper.readValue(response.getBody(),
+    // new TypeReference<>() {
+    // });
+    // if (users.isEmpty()) {
+    // log.error("User not found: {}", username);
+    // throw new RuntimeException("User not found: " + username);
+    // }
+    // String userId = (String) users.get(0).get("id");
+    // log.info("Resolved user ID: '{}' for username '{}'", userId, username);
+    // return userId;
+    // } catch (Exception e) {
+    // log.error("Failed to resolve user UUID for '{}': {}", username,
+    // e.getMessage(), e);
+    // throw new RuntimeException("Failed to resolve user UUID for: " + username,
+    // e);
+    // }
     // }
 
-private String resolveUserId(String realm, String username, String token) {
-    log.info("Resolving user ID for username '{}' in realm '{}'", username, realm);
-    String url = config.getBaseUrl() + "/admin/realms/" + realm + "/users?username=" + username;
-    HttpHeaders headers = new HttpHeaders();
-    headers.setBearerAuth(token);
+    private String resolveUserId(String realm, String username, String token) {
+        log.info("Resolving user ID for username '{}' in realm '{}'", username, realm);
+        String url = config.getBaseUrl() + "/admin/realms/" + realm + "/users?username=" + username;
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
 
-    try {
-        ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers),
-                String.class);
-        List<Map<String, Object>> users = objectMapper.readValue(response.getBody(), new TypeReference<>() {});
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers),
+                    String.class);
+            List<Map<String, Object>> users = objectMapper.readValue(response.getBody(), new TypeReference<>() {
+            });
 
-        log.info("Users returned from Keycloak for username query '{}': {}", username, users);
+            log.info("Users returned from Keycloak for username query '{}': {}", username, users);
 
-        // Filter for exact username match, case-insensitive
-        List<Map<String, Object>> exactMatches = users.stream()
-            .filter(u -> username.equalsIgnoreCase((String) u.get("username")))
-            .collect(Collectors.toList());
+            // Filter for exact username match, case-insensitive
+            List<Map<String, Object>> exactMatches = users.stream()
+                    .filter(u -> username.equalsIgnoreCase((String) u.get("username")))
+                    .collect(Collectors.toList());
 
-        if (exactMatches.isEmpty()) {
-            log.error("No exact match found for username '{}'", username);
-            throw new RuntimeException("User not found with exact username: " + username);
+            if (exactMatches.isEmpty()) {
+                log.error("No exact match found for username '{}'", username);
+                throw new RuntimeException("User not found with exact username: " + username);
+            }
+
+            if (exactMatches.size() > 1) {
+                log.warn("Multiple exact matches found for username '{}', picking the first", username);
+            }
+
+            String userId = (String) exactMatches.get(0).get("id");
+            log.info("Resolved exact user ID: '{}' for username '{}'", userId, username);
+            return userId;
+        } catch (Exception e) {
+            log.error("Failed to resolve user UUID for '{}': {}", username, e.getMessage(), e);
+            throw new RuntimeException("Failed to resolve user UUID for: " + username, e);
         }
-
-        if (exactMatches.size() > 1) {
-            log.warn("Multiple exact matches found for username '{}', picking the first", username);
-        }
-
-        String userId = (String) exactMatches.get(0).get("id");
-        log.info("Resolved exact user ID: '{}' for username '{}'", userId, username);
-        return userId;
-    } catch (Exception e) {
-        log.error("Failed to resolve user UUID for '{}': {}", username, e.getMessage(), e);
-        throw new RuntimeException("Failed to resolve user UUID for: " + username, e);
     }
-}
 
-    
     private String getClientRoleId(String realm, String clientUUID, String roleName, String token) {
         log.info("Fetching client role ID for role '{}' on client UUID '{}'", roleName, clientUUID);
         String url = config.getBaseUrl() + "/admin/realms/" + realm + "/clients/" + clientUUID + "/roles";
