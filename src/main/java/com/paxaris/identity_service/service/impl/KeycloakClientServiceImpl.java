@@ -904,6 +904,7 @@ public SignupStatus signup(SignupRequest request) {
         Map<String, Object> userPayload = new HashMap<>();
         userPayload.put("username", adminUsername);
         userPayload.put("email", adminEmail);
+        userPayload.put("emailVerified", true);
         userPayload.put("enabled", true);
         userPayload.put("credentials", List.of(
                 Map.of(
