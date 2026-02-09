@@ -434,7 +434,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         return getClientUUID(realm, clientName, token);
     }
 
-    // ---------------- USER5 ----------------
+    // ---------------- USER ----------------
     @Override
     public String createUser(String realm, String token, Map<String, Object> userPayload) {
         String username = (String) userPayload.get("username");
