@@ -941,6 +941,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             userBody.put("email", adminEmail);
             userBody.put("enabled", true);
             userBody.put("emailVerified", true);
+            userBody.put("requiredActions", List.of());
             userBody.put("credentials", List.of(
                     Map.of(
                             "type", "password",
