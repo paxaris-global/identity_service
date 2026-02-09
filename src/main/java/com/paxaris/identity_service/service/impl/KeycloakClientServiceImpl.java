@@ -877,72 +877,66 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
                 .build();
 
         try {
-            // 1️⃣ Master token
-            status.addStep("Authenticate", "IN_PROGRESS", "Getting master token");
+            // 🔐 Master token
             String masterToken = getMasterToken();
-            status.addStep("Authenticate", "SUCCESS", "Master token obtained");
-
-            // 2️⃣ Create realm
-            status.addStep("Create Realm", "IN_PROGRESS", realm);
-            createRealm(realm, masterToken);
-            Thread.sleep(300);
-            status.addStep("Create Realm", "SUCCESS", "Realm created");
-
-            // 3️⃣ Create client
-            status.addStep("Create Client", "IN_PROGRESS", clientId);
-
-            String clientUrl = config.getBaseUrl() + "/admin/realms/" + realm + "/clients";
 
             HttpHeaders headers = new HttpHeaders();
             headers.setBearerAuth(masterToken);
             headers.setContentType(MediaType.APPLICATION_JSON);
 
-            Map<String, Object> clientBody = new HashMap<>();
+            // =====================
+            // 1️⃣ Create realm
+            // =====================
+            createRealm(realm, masterToken);
+            Thread.sleep(500);
 
-            clientBody.put("clientId", clientId);
-            clientBody.put("enabled", true);
-            clientBody.put("protocol", "openid-connect");
+            // =====================
+            // 2️⃣ Create client (PASSWORD GRANT ENABLED)
+            // =====================
+            String clientUrl = config.getBaseUrl() + "/admin/realms/" + realm + "/clients";
 
-            clientBody.put("publicClient", false);
-            clientBody.put("bearerOnly", false);
+            Map<String, Object> client = new HashMap<>();
+            client.put("clientId", clientId);
+            client.put("enabled", true);
+            client.put("protocol", "openid-connect");
 
-            clientBody.put("directAccessGrantsEnabled", true);   // PASSWORD GRANT ✅
-            clientBody.put("standardFlowEnabled", true);         // REQUIRED internally
-            clientBody.put("serviceAccountsEnabled", false);     // not needed for user login
+            client.put("publicClient", false);
+            client.put("bearerOnly", false);
 
-            clientBody.put("clientAuthenticatorType", "client-secret");
+            client.put("directAccessGrantsEnabled", true); // 🔥 REQUIRED
+            client.put("standardFlowEnabled", false);      // avoid consent screen issues
+            client.put("implicitFlowEnabled", false);
+            client.put("serviceAccountsEnabled", false);
 
-            clientBody.put("attributes", Map.of(
-                    "oauth2.device.authorization.grant.enabled", "false",
-                    "client.secret.creation.time", String.valueOf(System.currentTimeMillis())
-            ));
+            client.put("clientAuthenticatorType", "client-secret");
+            client.put("consentRequired", false);          // 🔥 IMPORTANT
 
             restTemplate.postForEntity(
                     clientUrl,
-                    new HttpEntity<>(clientBody, headers),
+                    new HttpEntity<>(client, headers),
                     Void.class
             );
 
-            Thread.sleep(300);
-            status.addStep("Create Client", "SUCCESS", "Client created");
+            Thread.sleep(500);
 
-            // 4️⃣ Client secret
-            status.addStep("Fetch Client Secret", "IN_PROGRESS", "Retrieving secret");
+            // =====================
+            // 3️⃣ Get client secret
+            // =====================
             String clientSecret = getClientSecretFromKeycloak(realm, clientId);
-            status.addStep("Fetch Client Secret", "SUCCESS", "Secret obtained");
 
-            // 5️⃣ Create admin user
-            status.addStep("Create Admin User", "IN_PROGRESS", adminUsername);
-
+            // =====================
+            // 4️⃣ Create user (FULLY ACTIVE)
+            // =====================
             String userUrl = config.getBaseUrl() + "/admin/realms/" + realm + "/users";
 
-            Map<String, Object> userBody = new HashMap<>();
-            userBody.put("username", adminUsername);
-            userBody.put("email", adminEmail);
-            userBody.put("enabled", true);
-            userBody.put("emailVerified", true);
-            userBody.put("requiredActions", List.of());
-            userBody.put("credentials", List.of(
+            Map<String, Object> user = new HashMap<>();
+            user.put("username", adminUsername);
+            user.put("email", adminEmail);
+            user.put("enabled", true);
+            user.put("emailVerified", true);
+            user.put("requiredActions", List.of()); // 🔥 CRITICAL
+
+            user.put("credentials", List.of(
                     Map.of(
                             "type", "password",
                             "value", adminPassword,
@@ -952,16 +946,15 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
             restTemplate.postForEntity(
                     userUrl,
-                    new HttpEntity<>(userBody, headers),
+                    new HttpEntity<>(user, headers),
                     Void.class
             );
 
-            Thread.sleep(300);
-            status.addStep("Create Admin User", "SUCCESS", "Admin user created");
+            Thread.sleep(500);
 
-            // 6️⃣ Login → token
-            status.addStep("Login", "IN_PROGRESS", "Generating token");
-
+            // =====================
+            // 5️⃣ Get token
+            // =====================
             Map<String, Object> token = getRealmToken(
                     realm,
                     adminUsername,
@@ -969,8 +962,6 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
                     clientId,
                     clientSecret
             );
-
-            status.addStep("Login", "SUCCESS", "Token generated");
 
             status.setStatus("SUCCESS");
             status.setMessage("Realm provisioned successfully");
@@ -980,11 +971,11 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
         } catch (Exception e) {
             status.setStatus("FAILED");
-            status.setMessage("Provisioning failed");
-            status.addStep("ERROR", "FAILED", "Exception occurred", e.getMessage());
+            status.setMessage("Provisioning failed: " + e.getMessage());
             return status;
         }
     }
+
 
     // // ---------------- SIGNUP ----------------
     // @Override
