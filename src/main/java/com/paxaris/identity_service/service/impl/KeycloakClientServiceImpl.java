@@ -865,88 +865,60 @@ private void logCurlCommand(String realm, String userId, String clientUUID,
 
 //    ------------------SIGNUP---------------------------
 @Override
-public SignupStatus signup(SignupRequest request) {
+public Map<String, Object> signup(SignupRequest request) {
 
-    String realm = request.getRealmName().trim().toLowerCase();
+    String realm = request.getRealmName().toLowerCase().trim();
+    String clientId = realm + "-app";
 
-    String clientId = realm + "-admin-product";
     String adminUsername = "admin";
+    String adminPassword = request.getAdminPassword();
     String adminEmail = "admin@" + realm + ".com";
-    String password = request.getAdminPassword();
 
-    SignupStatus status = SignupStatus.builder()
-            .status("IN_PROGRESS")
-            .message("Provisioning started")
-            .steps(new ArrayList<>())
-            .build();
+    // 1️⃣ MASTER TOKEN
+    String masterToken = getMasterToken();
 
-    try {
-        // 1️⃣ AUTH
-        status.addStep("Authenticate", "IN_PROGRESS", "Getting master token");
-        String masterToken = getMasterToken();
-        status.addStep("Authenticate", "SUCCESS", "Master token obtained");
+    // 2️⃣ CREATE REALM
+    createRealm(realm, masterToken);
 
-        // 2️⃣ REALM
-        status.addStep("Create Realm", "IN_PROGRESS", realm);
-        createRealm(realm, masterToken);
-        status.addStep("Create Realm", "SUCCESS", "Realm created");
+    // small delay for Keycloak consistency
+    sleep(300);
 
-        // 3️⃣ CLIENT
-        status.addStep("Create Client", "IN_PROGRESS", clientId);
-        String clientUUID = createClientSafe(realm, clientId, masterToken);
-        status.addStep("Create Client", "SUCCESS", "Client created: " + clientUUID);
+    // 3️⃣ CREATE CONFIDENTIAL CLIENT
+    String clientUUID = createClientSafe(realm, clientId, masterToken);
 
-        // 4️⃣ ENABLE SERVICE ACCOUNT & ASSIGN ROLES
-        status.addStep("Assign Roles to Service Account", "IN_PROGRESS", clientId);
-        assignAdminRolesToServiceAccount(realm, clientUUID, masterToken);
-        status.addStep("Assign Roles to Service Account", "SUCCESS", "Roles assigned");
+    sleep(300);
 
-        // 5️⃣ ADMIN USER (OPTIONAL)
-        status.addStep("Create Admin User", "IN_PROGRESS", adminUsername);
+    // 4️⃣ FETCH CLIENT SECRET
+    String clientSecret = getClientSecretFromKeycloak(realm, clientId);
 
-        Map<String, Object> userPayload = new HashMap<>();
-        userPayload.put("username", adminUsername);
-        userPayload.put("email", adminEmail);
-        userPayload.put("emailVerified", true);
-        userPayload.put("enabled", true);
-        userPayload.put("credentials", List.of(
-                Map.of(
-                        "type", "password",
-                        "value", password,
-                        "temporary", false
-                )
-        ));
-        String userId = createUser(realm, masterToken, userPayload);
+    // 5️⃣ CREATE ADMIN USER
+    Map<String, Object> userPayload = new HashMap<>();
+    userPayload.put("username", adminUsername);
+    userPayload.put("email", adminEmail);
+    userPayload.put("enabled", true);
+    userPayload.put("emailVerified", true);
+    userPayload.put("credentials", List.of(
+            Map.of(
+                    "type", "password",
+                    "value", adminPassword,
+                    "temporary", false
+            )
+    ));
 
-        // Clear required actions just in case
-        clearRequiredActions(realm, userId, masterToken);
+    createUser(realm, masterToken, userPayload);
 
-        // Assign admin roles to the user (optional, can remove)
-        List<String> roles = List.of(
-                "manage-realm",
-                "manage-users",
-                "manage-clients",
-                "create-client",
-                "impersonation"
-        );
-        for (String role : roles) {
-            assignRealmManagementRoleToUser(realm, userId, role, masterToken);
-        }
-        status.addStep("Create Admin User", "SUCCESS", "Admin user created & roles assigned");
+    sleep(300);
 
-        // ✅ DONE
-        status.setStatus("SUCCESS");
-        status.setMessage("Realm provisioned successfully");
-
-        return status;
-
-    } catch (Exception e) {
-        status.setStatus("FAILED");
-        status.setMessage("Provisioning failed: " + e.getMessage());
-        status.addStep("ERROR", "FAILED", e.getMessage());
-        throw e;
-    }
+    // 6️⃣ LOGIN → GET REAL TOKEN
+    return getRealmToken(
+            realm,
+            adminUsername,
+            adminPassword,
+            clientId,
+            clientSecret
+    );
 }
+
 
     // CLIENT CREATION (CONFIDENTIAL + SERVICE ACCOUNT)
     public String createClientSafe(String realm, String clientId, String token) {
@@ -957,22 +929,22 @@ public SignupStatus signup(SignupRequest request) {
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
 
-        Map<String, Object> body = new HashMap<>();
-        body.put("clientId", clientId);
-        body.put("enabled", true);
-        body.put("protocol", "openid-connect");
+        Map<String, Object> body = Map.of(
+                "clientId", clientId,
+                "enabled", true,
+                "protocol", "openid-connect",
+                "publicClient", false,
+                "serviceAccountsEnabled", true,
+                "directAccessGrantsEnabled", true,
+                "standardFlowEnabled", false,
+                "clientAuthenticatorType", "client-secret"
+        );
 
-        body.put("publicClient", false);              // confidential
-        body.put("serviceAccountsEnabled", true);     // REQUIRED
-        body.put("standardFlowEnabled", false);
-        body.put("directAccessGrantsEnabled", true);
-
-        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
-
-        restTemplate.postForEntity(url, entity, Void.class);
+        restTemplate.postForEntity(url, new HttpEntity<>(body, headers), Void.class);
 
         return getClientUUID(realm, clientId, token);
     }
+
 
     // ASSIGN ROLES TO SERVICE ACCOUNT
     public void assignAdminRolesToServiceAccount(String realm, String clientUUID, String token) {
