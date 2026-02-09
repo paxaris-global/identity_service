@@ -258,34 +258,39 @@ public class KeycloakClientController {
     }
 
     // ------------------- SIGNUP -------------------
-//    @PostMapping(value = "/signup", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-//    public ResponseEntity<?> signup(
-//            @RequestParam("data") String data,
-//            @RequestParam("sourceZip") MultipartFile sourceZip) {
-//        try {
-//            ObjectMapper objectMapper = new ObjectMapper();
-//            SignupRequest request = objectMapper.readValue(data, SignupRequest.class);
-//
-//            com.paxaris.identity_service.dto.SignupStatus status = clientService.signup(request, sourceZip);
-//
-//            if ("SUCCESS".equals(status.getStatus())) {
-//                return ResponseEntity.ok(status);
-//            } else {
-//                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(status);
-//            }
-//        } catch (Exception e) {
-//            logger.error("Signup failed: {}", e.getMessage(), e);
-//            com.paxaris.identity_service.dto.SignupStatus errorStatus = com.paxaris.identity_service.dto.SignupStatus
-//                    .builder()
-//                    .status("FAILED")
-//                    .message("Signup failed: " + e.getMessage())
-//                    .steps(new java.util.ArrayList<>())
-//                    .build();
-//            errorStatus.addStep("Signup Process", "FAILED", "Signup failed with exception", e.getMessage());
-//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorStatus);
-//        }
-//    }
-//--------------------------------SIGNUP------------------------------------------
+    // @PostMapping(value = "/signup", consumes =
+    // MediaType.MULTIPART_FORM_DATA_VALUE)
+    // public ResponseEntity<?> signup(
+    // @RequestParam("data") String data,
+    // @RequestParam("sourceZip") MultipartFile sourceZip) {
+    // try {
+    // ObjectMapper objectMapper = new ObjectMapper();
+    // SignupRequest request = objectMapper.readValue(data, SignupRequest.class);
+    //
+    // com.paxaris.identity_service.dto.SignupStatus status =
+    // clientService.signup(request, sourceZip);
+    //
+    // if ("SUCCESS".equals(status.getStatus())) {
+    // return ResponseEntity.ok(status);
+    // } else {
+    // return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(status);
+    // }
+    // } catch (Exception e) {
+    // logger.error("Signup failed: {}", e.getMessage(), e);
+    // com.paxaris.identity_service.dto.SignupStatus errorStatus =
+    // com.paxaris.identity_service.dto.SignupStatus
+    // .builder()
+    // .status("FAILED")
+    // .message("Signup failed: " + e.getMessage())
+    // .steps(new java.util.ArrayList<>())
+    // .build();
+    // errorStatus.addStep("Signup Process", "FAILED", "Signup failed with
+    // exception", e.getMessage());
+    // return
+    // ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorStatus);
+    // }
+    // }
+    // --------------------------------SIGNUP------------------------------------------
     @PostMapping(value = "/signup", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<SignupStatus> signup(@RequestBody SignupRequest request) {
 
@@ -300,8 +305,7 @@ public class KeycloakClientController {
                             .status("FAILED")
                             .message(e.getMessage())
                             .steps(new ArrayList<>())
-                            .build()
-            );
+                            .build());
 
         } catch (Exception e) {
 
@@ -315,18 +319,12 @@ public class KeycloakClientController {
                     "Signup",
                     "FAILED",
                     "Unexpected error",
-                    e.getMessage()
-            );
+                    e.getMessage());
 
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(errorStatus);
         }
     }
-
-
-
-
-
 
     // ------------------- REALM
     // ----------------------------------------------------------------------------------------------------------------------------
@@ -353,11 +351,12 @@ public class KeycloakClientController {
             return ResponseEntity.badRequest().build();
         }
     }
+
     @GetMapping("/identity/realms/user")
     public ResponseEntity<String> getUserRealms(
-            @RequestHeader("Authorization") String authorizationHeader
-    ) {
-        String token = authorizationHeader.startsWith("Bearer ") ? authorizationHeader.substring(7) : authorizationHeader;
+            @RequestHeader("Authorization") String authorizationHeader) {
+        String token = authorizationHeader.startsWith("Bearer ") ? authorizationHeader.substring(7)
+                : authorizationHeader;
         Jwt decodedJwt = jwtDecoder.decode(token);
         Map<String, Object> claims = decodedJwt.getClaims();
         try {
@@ -369,6 +368,7 @@ public class KeycloakClientController {
             return ResponseEntity.badRequest().build();
         }
     }
+
     // ------------------- CLIENT -------------------
     @PostMapping("/identity/{realm}/clients")
     public ResponseEntity<String> createClient(
@@ -413,6 +413,7 @@ public class KeycloakClientController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
+
     // -------------------------------------------------------------------------------------------------------------------------------------------
     @GetMapping("/client/{realm}/{clientName}/uuid")
     public ResponseEntity<String> getClientUUID(
@@ -429,7 +430,6 @@ public class KeycloakClientController {
     }
 
     // ------------------------------------------------------------------------------------------------------------------------------------------------------------
-  
 
     // ------------------- USER -------------------
     @PostMapping("/identity/{realm}/users")
@@ -454,20 +454,20 @@ public class KeycloakClientController {
 
     // -----------------------------------------------------------------------------------------------------------------------------------------------------
     @GetMapping("identity/users/{realm}")
-public ResponseEntity<List<Map<String, Object>>> getAllUsers(
-        @PathVariable String realm,
-        @RequestHeader("Authorization") String authorizationHeader) {
+    public ResponseEntity<List<Map<String, Object>>> getAllUsers(
+            @PathVariable String realm,
+            @RequestHeader("Authorization") String authorizationHeader) {
 
-    String token = authorizationHeader.startsWith("Bearer ") ? authorizationHeader.substring(7) : authorizationHeader;
+        String token = authorizationHeader.startsWith("Bearer ") ? authorizationHeader.substring(7)
+                : authorizationHeader;
 
-    try {
-        List<Map<String, Object>> users = clientService.getAllUsers(realm, token);
-        return ResponseEntity.ok(users);
-    } catch (Exception e) {
-        return ResponseEntity.badRequest().build();
+        try {
+            List<Map<String, Object>> users = clientService.getAllUsers(realm, token);
+            return ResponseEntity.ok(users);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
     }
-}
-
 
     // ------------------- ROLE -------------------
     @PostMapping("/identity/{realm}/clients/{clientName}/roles")
@@ -564,7 +564,7 @@ public ResponseEntity<List<Map<String, Object>>> getAllUsers(
                 realm,
                 username,
                 clientName,
-                token, 
+                token,
                 rolesBody);
 
         return ResponseEntity.ok("Client roles assigned successfully");

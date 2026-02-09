@@ -11,8 +11,9 @@ import java.util.List;
 import java.util.Map;
 
 public interface KeycloakClientService {
-        
+
         String getMasterTokenInternally();
+
         // Token operations
         Map<String, Object> getMyRealmToken(String username, String password, String clientId, String realm);
 
@@ -68,10 +69,10 @@ public interface KeycloakClientService {
                         List<AssignRoleRequest> roles);
 
         // Signup operation
-//        SignupStatus signup(SignupRequest request, MultipartFile sourceZip);
+        // SignupStatus signup(SignupRequest request, MultipartFile sourceZip);
         SignupStatus signup(SignupRequest request);
-
 
         // get all clients
         List<Map<String, Object>> getClientRoles(String realm, String clientName, String token);
+
 }

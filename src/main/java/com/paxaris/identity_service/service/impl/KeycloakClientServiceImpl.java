@@ -434,14 +434,12 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         return getClientUUID(realm, clientName, token);
     }
 
-    // ---------------- USER ----------------
+    // ---------------- USER5 ----------------
     @Override
     public String createUser(String realm, String token, Map<String, Object> userPayload) {
         String username = (String) userPayload.get("username");
         log.info("Attempting to create user '{}' in realm '{}'", username, realm);
         userPayload.put("emailVerified", true);
-        userPayload.put("enabled", true);
-        userPayload.put("requiredActions", new ArrayList<>());
         String url = config.getBaseUrl() + "/admin/realms/" + realm + "/users";
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -885,63 +883,50 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             headers.setBearerAuth(masterToken);
             headers.setContentType(MediaType.APPLICATION_JSON);
 
-            // =====================
-            // 1️⃣ CREATE REALM
-            // =====================
+            // 1️⃣ Create realm
             createRealm(realm, masterToken);
-            Thread.sleep(600);
+            Thread.sleep(800);
 
-            // =====================
-            // 2️⃣ CREATE CLIENT
-            // =====================
+            // 2️⃣ Create client (password grant ready)
             String clientUrl = config.getBaseUrl() + "/admin/realms/" + realm + "/clients";
 
-            Map<String, Object> client = new HashMap<>();
-            client.put("clientId", clientId);
-            client.put("enabled", true);
-            client.put("protocol", "openid-connect");
-            client.put("publicClient", false);
-            client.put("directAccessGrantsEnabled", true);
-            client.put("standardFlowEnabled", false);
-            client.put("serviceAccountsEnabled", false);
-            client.put("clientAuthenticatorType", "client-secret");
+            Map<String, Object> client = Map.of(
+                    "clientId", clientId,
+                    "enabled", true,
+                    "protocol", "openid-connect",
+                    "publicClient", false,
+                    "directAccessGrantsEnabled", true,
+                    "serviceAccountsEnabled", false,
+                    "standardFlowEnabled", false,
+                    "clientAuthenticatorType", "client-secret",
+                    "consentRequired", false);
 
             restTemplate.postForEntity(clientUrl, new HttpEntity<>(client, headers), Void.class);
-            Thread.sleep(600);
+            Thread.sleep(800);
 
-            // =====================
-            // 3️⃣ CLIENT SECRET
-            // =====================
+            // 3️⃣ Client secret
             String clientSecret = getClientSecretFromKeycloak(realm, clientId);
 
-            // =====================
-            // 4️⃣ CREATE USER (WITH PASSWORD)
-            // =====================
+            // 4️⃣ Create user
             String userUrl = config.getBaseUrl() + "/admin/realms/" + realm + "/users";
 
-            Map<String, Object> user = new HashMap<>();
-            user.put("username", adminUsername);
-            user.put("email", adminEmail);
-            user.put("enabled", true);
-            user.put("emailVerified", true);
-            user.put("requiredActions", new ArrayList<>());
+            Map<String, Object> user = Map.of(
+                    "username", adminUsername,
+                    "email", adminEmail,
+                    "enabled", true,
+                    "emailVerified", true,
+                    "requiredActions", List.of(),
+                    "credentials", List.of(
+                            Map.of(
+                                    "type", "password",
+                                    "value", adminPassword,
+                                    "temporary", false)));
 
-            Map<String, Object> password = new HashMap<>();
-            password.put("type", "password");
-            password.put("value", adminPassword);
-            password.put("temporary", false);
-            user.put("credentials", List.of(password));
+            restTemplate.postForEntity(userUrl, new HttpEntity<>(user, headers), Void.class);
+            Thread.sleep(800);
 
-            restTemplate.postForEntity(
-                    userUrl,
-                    new HttpEntity<>(user, headers),
-                    Void.class);
+            // 🔥 5️⃣ CLEAR REQUIRED ACTIONS (THIS WAS MISSING)
 
-            Thread.sleep(600);
-
-            // =====================
-            // 5️⃣ GET USER ID
-            // =====================
             String searchUrl = config.getBaseUrl()
                     + "/admin/realms/" + realm + "/users?username=" + adminUsername;
 
@@ -953,26 +938,20 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
             String userId = (String) ((Map) users.getBody().get(0)).get("id");
 
-            // =====================
-            // 6️⃣ SET PASSWORD is now done during user creation.
-            // =====================
-            // 6.5 ENSURE ACCOUNT SETUP (Clear Actions)
-            // =====================
-            String userDetailUrl = config.getBaseUrl() + "/admin/realms/" + realm + "/users/" + userId;
-            ResponseEntity<Map> userResp = restTemplate.exchange(userDetailUrl, HttpMethod.GET,
-                    new HttpEntity<>(headers), Map.class);
-            Map<String, Object> userMap = userResp.getBody();
-            if (userMap != null) {
-                userMap.put("requiredActions", new ArrayList<>());
-                userMap.put("emailVerified", true);
-                userMap.put("enabled", true);
-                restTemplate.put(userDetailUrl, new HttpEntity<>(userMap, headers));
-            }
-            Thread.sleep(400);
+            String clearUrl = config.getBaseUrl()
+                    + "/admin/realms/" + realm + "/users/" + userId;
 
-            // =====================
-            // 7️⃣ GET TOKEN (WORKS 100%)
-            // =====================
+            Map<String, Object> clear = Map.of("requiredActions", List.of());
+
+            restTemplate.exchange(
+                    clearUrl,
+                    HttpMethod.PUT,
+                    new HttpEntity<>(clear, headers),
+                    Void.class);
+
+            Thread.sleep(500);
+
+            // 6️⃣ Get token (NOW IT WORKS)
             Map<String, Object> token = getRealmToken(
                     realm,
                     adminUsername,
