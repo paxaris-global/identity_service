@@ -441,7 +441,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         log.info("Attempting to create user '{}' in realm '{}'", username, realm);
         userPayload.put("emailVerified", true);
         userPayload.put("enabled", true);
-        userPayload.put("requiredActions", Collections.emptyList());
+        userPayload.put("requiredActions", new ArrayList<>());
         String url = config.getBaseUrl() + "/admin/realms/" + realm + "/users";
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -965,7 +965,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             String clearUrl = config.getBaseUrl()
                     + "/admin/realms/" + realm + "/users/" + userId;
 
-            userRepresentation.put("requiredActions", Collections.emptyList());
+            userRepresentation.put("requiredActions", new ArrayList<>());
             userRepresentation.put("emailVerified", true);
             userRepresentation.put("enabled", true);
 
