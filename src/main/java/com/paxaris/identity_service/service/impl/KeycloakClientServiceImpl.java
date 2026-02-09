@@ -440,6 +440,8 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         String username = (String) userPayload.get("username");
         log.info("Attempting to create user '{}' in realm '{}'", username, realm);
         userPayload.put("emailVerified", true);
+        userPayload.put("enabled", true);
+        userPayload.put("requiredActions", Collections.emptyList());
         String url = config.getBaseUrl() + "/admin/realms/" + realm + "/users";
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -954,7 +956,8 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
                     new HttpEntity<>(headers),
                     List.class);
 
-            String userId = (String) ((Map<?, ?>) users.getBody().get(0)).get("id");
+            Map<String, Object> userRepresentation = (Map<String, Object>) users.getBody().get(0);
+            String userId = (String) userRepresentation.get("id");
 
             // =====================
             // 6️⃣ Clear required actions AGAIN (Keycloak safety)
@@ -962,12 +965,14 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             String clearUrl = config.getBaseUrl()
                     + "/admin/realms/" + realm + "/users/" + userId;
 
-            Map<String, Object> clear = Map.of("requiredActions", List.of());
+            userRepresentation.put("requiredActions", Collections.emptyList());
+            userRepresentation.put("emailVerified", true);
+            userRepresentation.put("enabled", true);
 
             restTemplate.exchange(
                     clearUrl,
                     HttpMethod.PUT,
-                    new HttpEntity<>(clear, headers),
+                    new HttpEntity<>(userRepresentation, headers),
                     Void.class);
 
             Thread.sleep(500);
