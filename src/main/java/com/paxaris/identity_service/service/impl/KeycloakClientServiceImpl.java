@@ -869,7 +869,6 @@ public SignupStatus signup(SignupRequest request) {
 
     String realm = request.getRealmName().trim().toLowerCase();
 
-    // 🔒 HARD CODED
     String clientId = realm + "-admin-product";
     String adminUsername = "admin";
     String adminEmail = "admin@" + realm + ".com";
@@ -882,30 +881,22 @@ public SignupStatus signup(SignupRequest request) {
             .build();
 
     try {
-
         // 1️⃣ AUTH
-        status.addStep("Authenticate", "IN_PROGRESS", "Getting master token");
         String token = getMasterToken();
-        status.addStep("Authenticate", "SUCCESS", "Authenticated");
 
         // 2️⃣ REALM
-        status.addStep("Create Realm", "IN_PROGRESS", realm);
         createRealm(realm, token);
-        status.addStep("Create Realm", "SUCCESS", "Realm created");
 
-        // 3️⃣ CLIENT (clean – no sleep, no retry)
-        status.addStep("Create Client", "IN_PROGRESS", clientId);
+        // 3️⃣ CLIENT
         String clientUUID = createClientSafe(realm, clientId, token);
-        status.addStep("Create Client", "SUCCESS", "Client created: " + clientUUID);
 
-        // 4️⃣ ADMIN USER
-        status.addStep("Create Admin User", "IN_PROGRESS", adminUsername);
-
+        // 4️⃣ ADMIN USER (LOGIN-READY)
         Map<String, Object> userPayload = new HashMap<>();
         userPayload.put("username", adminUsername);
         userPayload.put("email", adminEmail);
-        userPayload.put("emailVerified", true);
+        userPayload.put("emailVerified", true);   // 🔑 REQUIRED
         userPayload.put("enabled", true);
+        userPayload.put("requiredActions", List.of()); // 🔑 REQUIRED
         userPayload.put("credentials", List.of(
                 Map.of(
                         "type", "password",
@@ -916,11 +907,10 @@ public SignupStatus signup(SignupRequest request) {
 
         String userId = createUser(realm, token, userPayload);
 
-        status.addStep("Create Admin User", "SUCCESS", "User created");
+        // 🔑 FORCE clear required actions (Keycloak sometimes adds defaults)
+        clearRequiredActions(realm, userId, token);
 
         // 5️⃣ ADMIN ROLES
-        status.addStep("Assign Admin Roles", "IN_PROGRESS", "Granting permissions");
-
         List<String> roles = List.of(
                 "manage-realm",
                 "manage-users",
@@ -933,33 +923,21 @@ public SignupStatus signup(SignupRequest request) {
             assignRealmManagementRoleToUser(realm, userId, role, token);
         }
 
-        status.addStep("Assign Admin Roles", "SUCCESS", "Roles assigned");
-
-        // ✅ DONE
         status.setStatus("SUCCESS");
         status.setMessage("Realm provisioned successfully");
-
         return status;
 
     } catch (Exception e) {
-
         status.setStatus("FAILED");
         status.setMessage("Provisioning failed: " + e.getMessage());
-
-        status.addStep(
-                "ERROR",
-                "FAILED",
-                "Unexpected error",
-                e.getMessage()
-        );
-
-        throw e; // don’t wrap — keeps real cause
+        throw e;
     }
 }
 
     public String createClientSafe(String realm, String clientId, String token) {
 
-        String url = config.getBaseUrl() + "/admin/realms/" + realm + "/clients";
+        String url = config.getBaseUrl()
+                + "/admin/realms/" + realm + "/clients";
 
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
@@ -969,17 +947,40 @@ public SignupStatus signup(SignupRequest request) {
         body.put("clientId", clientId);
         body.put("enabled", true);
         body.put("protocol", "openid-connect");
-        body.put("publicClient", false);
-        body.put("standardFlowEnabled", true);
-        body.put("directAccessGrantsEnabled", true);
-        body.put("redirectUris", List.of("*"));
 
-        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+        body.put("publicClient", false);              // 🔑 confidential
+        body.put("serviceAccountsEnabled", true);     // 🔑 required
+        body.put("directAccessGrantsEnabled", true);  // 🔑 password grant
+        body.put("standardFlowEnabled", true);
+
+        HttpEntity<Map<String, Object>> entity =
+                new HttpEntity<>(body, headers);
 
         restTemplate.postForEntity(url, entity, Void.class);
 
         return getClientUUID(realm, clientId, token);
     }
+    public void clearRequiredActions(String realm, String userId, String token) {
+
+        String url = config.getBaseUrl()
+                + "/admin/realms/" + realm + "/users/" + userId;
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, Object> body = Map.of(
+                "requiredActions", List.of()
+        );
+
+        restTemplate.exchange(
+                url,
+                HttpMethod.PUT,
+                new HttpEntity<>(body, headers),
+                Void.class
+        );
+    }
+
 
 
 
