@@ -916,6 +916,7 @@ String clientName,
                     "email", adminEmail,
                     "enabled", true,
                     "emailVerified", true,
+                    "requiredActions", List.of(),
                     "credentials", List.of(
                             Map.of(
                                     "type", "password",
