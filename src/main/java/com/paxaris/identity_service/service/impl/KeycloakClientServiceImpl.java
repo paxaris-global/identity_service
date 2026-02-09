@@ -965,7 +965,7 @@ public SignupStatus signup(SignupRequest request) {
         body.put("publicClient", false);              // confidential
         body.put("serviceAccountsEnabled", true);     // REQUIRED
         body.put("standardFlowEnabled", false);
-        body.put("directAccessGrantsEnabled", false);
+        body.put("directAccessGrantsEnabled", true);
 
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
 
