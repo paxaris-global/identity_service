@@ -968,7 +968,7 @@ public SignupStatus signup(SignupRequest request) {
         body.put("clientId", clientId);
         body.put("enabled", true);
         body.put("protocol", "openid-connect");
-        body.put("publicClient", true);
+        body.put("publicClient", false);
         body.put("standardFlowEnabled", true);
         body.put("directAccessGrantsEnabled", true);
         body.put("redirectUris", List.of("*"));
