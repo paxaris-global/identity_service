@@ -412,26 +412,51 @@ public class KeycloakClientController {
     }
 
     // ------------------- CLIENT -------------------
-    @PostMapping("/identity/{realm}/clients")
-    public ResponseEntity<String> createClient(
+    @PostMapping(value = "/identity/{realm}/clients", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<SignupStatus> createClient(
             @PathVariable String realm,
-            @RequestBody Map<String, Object> clientRequest) {
+            @RequestPart("client") Map<String, Object> clientRequest,
+            @RequestPart("sourceZip") MultipartFile sourceZip) {
 
+        // Get master token
         String masterToken = clientService.getMyRealmToken(
-                "admin", "admin@123", "admin-cli", "master").get("access_token").toString();
+                "admin",
+                "admin@123",
+                "admin-cli",
+                "master"
+        ).get("access_token").toString();
 
         String clientId = clientRequest.get("clientId").toString();
+
         boolean publicClient = Boolean.parseBoolean(
-                clientRequest.getOrDefault("publicClient", "true").toString());
+                clientRequest.getOrDefault("publicClient", "false").toString()
+        );
+
+        SignupStatus status = SignupStatus.builder()
+                .status("IN_PROGRESS")
+                .message("Client provisioning started")
+                .steps(new ArrayList<>())
+                .build();
 
         try {
-            String clientUUID = clientService.createClient(realm, clientId, publicClient, masterToken);
-            return ResponseEntity.ok("Client created successfully with UUID: " + clientUUID);
+            clientService.createClient(
+                    realm,
+                    clientId,
+                    publicClient,
+                    masterToken,
+                    sourceZip,
+                    status,
+                    "admin"   // or pull from auth context
+            );
+
+            return ResponseEntity.ok(status);
+
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Failed to create client: " + e.getMessage());
+                    .body(status);
         }
     }
+
 
     // ---------------------------------get all clients
 

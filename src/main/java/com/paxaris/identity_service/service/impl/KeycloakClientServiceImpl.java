@@ -324,12 +324,66 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
     }
 
     // ---------------- CLIENT ----------------
-    @Override
-    public String createClient(String realm, String clientId, boolean isPublicClient, String token) {
-        // Correct Keycloak admin URL
+//    @Override
+//    public String createClient(String realm, String clientId, boolean isPublicClient, String token) {
+//        // Correct Keycloak admin URL
+//        String url = config.getBaseUrl() + "/admin/realms/" + realm + "/clients";
+//
+//        // Build request body
+//        Map<String, Object> body = new HashMap<>();
+//        body.put("clientId", clientId);
+//        body.put("enabled", true);
+//        body.put("protocol", "openid-connect");
+//        body.put("publicClient", isPublicClient);
+//        body.put("standardFlowEnabled", true);
+//        body.put("directAccessGrantsEnabled", true);
+////        body.put("authorizationServicesEnabled", true);
+//
+//        if (isPublicClient) {
+//            body.put("clientAuthenticatorType", "client-id");
+//            body.put("redirectUris", Collections.singletonList("*"));
+//            body.put("serviceAccountsEnabled", false);
+//        } else {
+//            body.put("clientAuthenticatorType", "client-secret");
+//            body.put("serviceAccountsEnabled", true);
+//        }
+//
+//        // Set headers
+//        HttpHeaders headers = new HttpHeaders();
+//        headers.setContentType(MediaType.APPLICATION_JSON);
+//        headers.setBearerAuth(token);
+//
+//        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+//
+//        // Make REST call to Keycloaks
+//        ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
+//
+//        if (!response.getStatusCode().is2xxSuccessful()) {
+//            throw new RuntimeException("Failed to create client with status code: " + response.getStatusCode());
+//        }
+//
+//        // Return the client UUID
+//        return getClientUUID(realm, clientId, token);
+//    }
+
+@Override
+public String createClient(
+        String realm,
+        String clientId,
+        boolean isPublicClient,
+        String token,
+        MultipartFile sourceZip,
+        SignupStatus status,
+        String adminUsername) {
+
+    Path extractedCodePath = null;
+
+    try {
+        // =========================
+        // Step 1 — Create Keycloak Client
+        // =========================
         String url = config.getBaseUrl() + "/admin/realms/" + realm + "/clients";
 
-        // Build request body
         Map<String, Object> body = new HashMap<>();
         body.put("clientId", clientId);
         body.put("enabled", true);
@@ -337,34 +391,122 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         body.put("publicClient", isPublicClient);
         body.put("standardFlowEnabled", true);
         body.put("directAccessGrantsEnabled", true);
-//        body.put("authorizationServicesEnabled", true);
 
         if (isPublicClient) {
             body.put("clientAuthenticatorType", "client-id");
-            body.put("redirectUris", Collections.singletonList("*"));
+            body.put("redirectUris", List.of("*"));
             body.put("serviceAccountsEnabled", false);
         } else {
             body.put("clientAuthenticatorType", "client-secret");
             body.put("serviceAccountsEnabled", true);
         }
 
-        // Set headers
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(token);
 
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
 
-        // Make REST call to Keycloaks
-        ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
+        ResponseEntity<String> response =
+                restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
 
         if (!response.getStatusCode().is2xxSuccessful()) {
-            throw new RuntimeException("Failed to create client with status code: " + response.getStatusCode());
+            throw new RuntimeException("Keycloak client creation failed: " + response.getStatusCode());
         }
 
-        // Return the client UUID
-        return getClientUUID(realm, clientId, token);
+        String clientUUID = getClientUUID(realm, clientId, token);
+
+        status.addStep("Create Client", "SUCCESS", "Client created: " + clientUUID);
+
+        // =========================
+        // Step 2 — Extract ZIP
+        // =========================
+        status.addStep("Extract Application Code", "IN_PROGRESS", "Extracting ZIP");
+
+        extractedCodePath = Files.createTempDirectory(
+                "signup-extract-" + System.currentTimeMillis());
+
+        extractZipFile(sourceZip, extractedCodePath);
+
+        status.addStep("Extract Application Code", "SUCCESS", "ZIP extracted");
+
+        // =========================
+        // Step 3 — Generate Repo Name
+        // =========================
+        String repoName = ProvisioningService.generateRepositoryName(
+                realm,
+                adminUsername,
+                clientId
+        );
+
+        status.addStep("Generate Repository Name", "SUCCESS",
+                "Repository name generated: " + repoName);
+
+        // =========================
+        // Step 4 — Create GitHub Repo
+        // =========================
+        status.addStep("Create GitHub Repository", "IN_PROGRESS",
+                "Creating repository " + repoName);
+
+        provisioningService.createRepo(repoName);
+
+        status.addStep("Create GitHub Repository", "SUCCESS",
+                "Repository created successfully");
+
+        // =========================
+        // Step 5 — Upload Code
+        // =========================
+        status.addStep("Upload Code to GitHub", "IN_PROGRESS",
+                "Uploading code");
+
+        uploadDirectoryToGitHub(extractedCodePath, repoName);
+
+        status.addStep("Upload Code to GitHub", "SUCCESS",
+                "Code uploaded successfully");
+
+        // =========================
+        // Cleanup
+        // =========================
+        cleanupDirectory(extractedCodePath);
+
+        status.setStatus("SUCCESS");
+        status.setMessage("Client + application provisioned successfully");
+
+        return clientUUID;
+
+    } catch (Exception e) {
+
+        status.setStatus("FAILED");
+        status.setMessage(e.getMessage());
+
+        if (!status.getSteps().isEmpty()) {
+            SignupStatus.StepStatus last =
+                    status.getSteps().get(status.getSteps().size() - 1);
+
+            if ("IN_PROGRESS".equals(last.getStatus())) {
+                last.setStatus("FAILED");
+                last.setError(e.getMessage());
+            }
+        }
+
+        cleanupDirectory(extractedCodePath);
+
+        throw new RuntimeException("Client provisioning failed", e);
     }
+}
+    private void cleanupDirectory(Path dir) {
+        if (dir == null || !Files.exists(dir)) return;
+
+        try {
+            Files.walk(dir)
+                    .sorted(Comparator.reverseOrder())
+                    .forEach(p -> {
+                        try { Files.delete(p); } catch (Exception ignored) {}
+                    });
+        } catch (Exception ignored) {}
+    }
+
+
 
     @Override
     public List<Map<String, Object>> getAllClients(String realm, String token) {
@@ -857,122 +999,6 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
     }
 
     // ------------------SIGNUP---------------------------
-    // ------------------SIGNUP---------------------------
-    // ------------------SIGNUP---------------------------
-//    @Override
-//    public SignupStatus signup(SignupRequest request) {
-//
-//        String realm = request.getRealmName().trim().toLowerCase();
-//        String clientId = realm + "-admin-product";
-//
-//        String adminUsername = request.getAdminUsername() != null
-//                ? request.getAdminUsername()
-//                : "admin";
-//
-//        String adminPassword = request.getAdminPassword();
-//        String adminEmail = "admin@" + realm + ".com";
-//
-//        SignupStatus status = SignupStatus.builder()
-//                .status("IN_PROGRESS")
-//                .message("Provisioning started")
-//                .steps(new ArrayList<>())
-//                .build();
-//
-//        try {
-//            String masterToken = getMasterToken();
-//
-//            HttpHeaders headers = new HttpHeaders();
-//            headers.setBearerAuth(masterToken);
-//            headers.setContentType(MediaType.APPLICATION_JSON);
-//
-//            // 1️⃣ Create realm
-//            createRealm(realm, masterToken);
-//            Thread.sleep(800);
-//
-//            // 2️⃣ Create client (password grant ready)
-//            String clientUrl = config.getBaseUrl() + "/admin/realms/" + realm + "/clients";
-//
-//            Map<String, Object> client = Map.of(
-//                    "clientId", clientId,
-//                    "enabled", true,
-//                    "protocol", "openid-connect",
-//                    "publicClient", false,
-//                    "directAccessGrantsEnabled", true,
-//                    "serviceAccountsEnabled", false,
-//                    "standardFlowEnabled", false,
-//                    "clientAuthenticatorType", "client-secret",
-//                    "consentRequired", false);
-//
-//            restTemplate.postForEntity(clientUrl, new HttpEntity<>(client, headers), Void.class);
-//            Thread.sleep(800);
-//
-//            // 3️⃣ Client secret
-//            String clientSecret = getClientSecretFromKeycloak(realm, clientId);
-//
-//            // 4️⃣ Create user
-//            String userUrl = config.getBaseUrl() + "/admin/realms/" + realm + "/users";
-//
-//            Map<String, Object> user = Map.of(
-//                    "username", adminUsername,
-//                    "email", adminEmail,
-//                    "enabled", true,
-//                    "emailVerified", true,
-//                    "requiredActions", List.of(),
-//                    "credentials", List.of(
-//                            Map.of(
-//                                    "type", "password",
-//                                    "value", adminPassword,
-//                                    "temporary", false)));
-//
-//            restTemplate.postForEntity(userUrl, new HttpEntity<>(user, headers), Void.class);
-//            Thread.sleep(800);
-//
-//            // 🔥 5️⃣ CLEAR REQUIRED ACTIONS (THIS WAS MISSING)
-//
-//            String searchUrl = config.getBaseUrl()
-//                    + "/admin/realms/" + realm + "/users?username=" + adminUsername;
-//
-//            ResponseEntity<List> users = restTemplate.exchange(
-//                    searchUrl,
-//                    HttpMethod.GET,
-//                    new HttpEntity<>(headers),
-//                    List.class);
-//
-//            String userId = (String) ((Map) users.getBody().get(0)).get("id");
-//
-//            String clearUrl = config.getBaseUrl()
-//                    + "/admin/realms/" + realm + "/users/" + userId;
-//
-//            Map<String, Object> clear = Map.of("requiredActions", List.of());
-//
-//            restTemplate.exchange(
-//                    clearUrl,
-//                    HttpMethod.PUT,
-//                    new HttpEntity<>(clear, headers),
-//                    Void.class);
-//
-//            Thread.sleep(500);
-//
-//            // 6️⃣ Get token (NOW IT WORKS)
-//            Map<String, Object> token = getRealmToken(
-//                    realm,
-//                    adminUsername,
-//                    adminPassword,
-//                    clientId,
-//                    clientSecret);
-//
-//            status.setStatus("SUCCESS");
-//            status.setMessage("Realm provisioned successfully");
-//            status.setToken(token);
-//
-//            return status;
-//
-//        } catch (Exception e) {
-//            status.setStatus("FAILED");
-//            status.setMessage("Provisioning failed: " + e.getMessage());
-//            return status;
-//        }
-//    }
 
     public String createClients(String realm, String clientId, boolean isPublicClient, String token) {
 
@@ -1309,7 +1335,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
     // status.addStep("Upload Code to GitHub", "SUCCESS", "Code uploaded to GitHub
     // successfully");
     //
-    // // Cleanup extracted code
+    // //   Cleanup extracted code
     // if (extractedCodePath != null && Files.exists(extractedCodePath)) {
     // try {
     // Files.walk(extractedCodePath)
