@@ -337,7 +337,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         body.put("publicClient", isPublicClient);
         body.put("standardFlowEnabled", true);
         body.put("directAccessGrantsEnabled", true);
-        body.put("authorizationServicesEnabled", true);
+//        body.put("authorizationServicesEnabled", true);
 
         if (isPublicClient) {
             body.put("clientAuthenticatorType", "client-id");
@@ -1017,7 +1017,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             String clientUUID = createClient(
                     realm,
                     clientId,
-                    true,          // private client (admin product)
+                    false,          // private client (admin product)
                     masterToken
             );
 
