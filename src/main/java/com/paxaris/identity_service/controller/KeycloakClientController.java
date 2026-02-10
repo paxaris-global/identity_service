@@ -290,12 +290,16 @@ public class KeycloakClientController {
     // ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorStatus);
     // }
     // }
-    // --------------------------------SIGNUP------------------------------------------
+
     @PostMapping(value = "/signup", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<SignupStatus> signup(@RequestBody SignupRequest request) {
 
         try {
-            SignupStatus status = clientService.signup(request);
+            SignupStatus status = clientService.signup(
+                    request.getRealmName(),
+                    request.getAdminPassword()
+            );
+
             return ResponseEntity.ok(status);
 
         } catch (IllegalArgumentException e) {
@@ -305,7 +309,8 @@ public class KeycloakClientController {
                             .status("FAILED")
                             .message(e.getMessage())
                             .steps(new ArrayList<>())
-                            .build());
+                            .build()
+            );
 
         } catch (Exception e) {
 
@@ -319,12 +324,49 @@ public class KeycloakClientController {
                     "Signup",
                     "FAILED",
                     "Unexpected error",
-                    e.getMessage());
+                    e.getMessage()
+            );
 
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(errorStatus);
         }
     }
+
+    // --------------------------------SIGNUP------------------------------------------
+//    @PostMapping(value = "/signup", consumes = MediaType.APPLICATION_JSON_VALUE)
+//    public ResponseEntity<SignupStatus> signup(@RequestBody SignupRequest request) {
+//
+//        try {
+//            SignupStatus status = clientService.signup(request);
+//            return ResponseEntity.ok(status);
+//
+//        } catch (IllegalArgumentException e) {
+//
+//            return ResponseEntity.badRequest().body(
+//                    SignupStatus.builder()
+//                            .status("FAILED")
+//                            .message(e.getMessage())
+//                            .steps(new ArrayList<>())
+//                            .build());
+//
+//        } catch (Exception e) {
+//
+//            SignupStatus errorStatus = SignupStatus.builder()
+//                    .status("FAILED")
+//                    .message("Provisioning failed: " + e.getMessage())
+//                    .steps(new ArrayList<>())
+//                    .build();
+//
+//            errorStatus.addStep(
+//                    "Signup",
+//                    "FAILED",
+//                    "Unexpected error",
+//                    e.getMessage());
+//
+//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+//                    .body(errorStatus);
+//        }
+//    }
 
     // ------------------- REALM
     // ----------------------------------------------------------------------------------------------------------------------------

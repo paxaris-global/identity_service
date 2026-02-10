@@ -857,120 +857,237 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
     }
 
     // ------------------SIGNUP---------------------------
+    // ------------------SIGNUP---------------------------
+    // ------------------SIGNUP---------------------------
+//    @Override
+//    public SignupStatus signup(SignupRequest request) {
+//
+//        String realm = request.getRealmName().trim().toLowerCase();
+//        String clientId = realm + "-admin-product";
+//
+//        String adminUsername = request.getAdminUsername() != null
+//                ? request.getAdminUsername()
+//                : "admin";
+//
+//        String adminPassword = request.getAdminPassword();
+//        String adminEmail = "admin@" + realm + ".com";
+//
+//        SignupStatus status = SignupStatus.builder()
+//                .status("IN_PROGRESS")
+//                .message("Provisioning started")
+//                .steps(new ArrayList<>())
+//                .build();
+//
+//        try {
+//            String masterToken = getMasterToken();
+//
+//            HttpHeaders headers = new HttpHeaders();
+//            headers.setBearerAuth(masterToken);
+//            headers.setContentType(MediaType.APPLICATION_JSON);
+//
+//            // 1️⃣ Create realm
+//            createRealm(realm, masterToken);
+//            Thread.sleep(800);
+//
+//            // 2️⃣ Create client (password grant ready)
+//            String clientUrl = config.getBaseUrl() + "/admin/realms/" + realm + "/clients";
+//
+//            Map<String, Object> client = Map.of(
+//                    "clientId", clientId,
+//                    "enabled", true,
+//                    "protocol", "openid-connect",
+//                    "publicClient", false,
+//                    "directAccessGrantsEnabled", true,
+//                    "serviceAccountsEnabled", false,
+//                    "standardFlowEnabled", false,
+//                    "clientAuthenticatorType", "client-secret",
+//                    "consentRequired", false);
+//
+//            restTemplate.postForEntity(clientUrl, new HttpEntity<>(client, headers), Void.class);
+//            Thread.sleep(800);
+//
+//            // 3️⃣ Client secret
+//            String clientSecret = getClientSecretFromKeycloak(realm, clientId);
+//
+//            // 4️⃣ Create user
+//            String userUrl = config.getBaseUrl() + "/admin/realms/" + realm + "/users";
+//
+//            Map<String, Object> user = Map.of(
+//                    "username", adminUsername,
+//                    "email", adminEmail,
+//                    "enabled", true,
+//                    "emailVerified", true,
+//                    "requiredActions", List.of(),
+//                    "credentials", List.of(
+//                            Map.of(
+//                                    "type", "password",
+//                                    "value", adminPassword,
+//                                    "temporary", false)));
+//
+//            restTemplate.postForEntity(userUrl, new HttpEntity<>(user, headers), Void.class);
+//            Thread.sleep(800);
+//
+//            // 🔥 5️⃣ CLEAR REQUIRED ACTIONS (THIS WAS MISSING)
+//
+//            String searchUrl = config.getBaseUrl()
+//                    + "/admin/realms/" + realm + "/users?username=" + adminUsername;
+//
+//            ResponseEntity<List> users = restTemplate.exchange(
+//                    searchUrl,
+//                    HttpMethod.GET,
+//                    new HttpEntity<>(headers),
+//                    List.class);
+//
+//            String userId = (String) ((Map) users.getBody().get(0)).get("id");
+//
+//            String clearUrl = config.getBaseUrl()
+//                    + "/admin/realms/" + realm + "/users/" + userId;
+//
+//            Map<String, Object> clear = Map.of("requiredActions", List.of());
+//
+//            restTemplate.exchange(
+//                    clearUrl,
+//                    HttpMethod.PUT,
+//                    new HttpEntity<>(clear, headers),
+//                    Void.class);
+//
+//            Thread.sleep(500);
+//
+//            // 6️⃣ Get token (NOW IT WORKS)
+//            Map<String, Object> token = getRealmToken(
+//                    realm,
+//                    adminUsername,
+//                    adminPassword,
+//                    clientId,
+//                    clientSecret);
+//
+//            status.setStatus("SUCCESS");
+//            status.setMessage("Realm provisioned successfully");
+//            status.setToken(token);
+//
+//            return status;
+//
+//        } catch (Exception e) {
+//            status.setStatus("FAILED");
+//            status.setMessage("Provisioning failed: " + e.getMessage());
+//            return status;
+//        }
+//    }
     @Override
-    public SignupStatus signup(SignupRequest request) {
+    public SignupStatus signup(String realmName, String adminPassword) {
 
-        String realm = request.getRealmName().trim().toLowerCase();
-        String clientId = realm + "-admin-product";
+        if (realmName == null || realmName.isBlank()) {
+            throw new IllegalArgumentException("Realm name is required");
+        }
 
-        String adminUsername = request.getAdminUsername() != null
-                ? request.getAdminUsername()
-                : "admin";
-
-        String adminPassword = request.getAdminPassword();
-        String adminEmail = "admin@" + realm + ".com";
+        if (adminPassword == null || adminPassword.isBlank()) {
+            throw new IllegalArgumentException("Admin password is required");
+        }
 
         SignupStatus status = SignupStatus.builder()
                 .status("IN_PROGRESS")
-                .message("Provisioning started")
+                .message("Signup started")
                 .steps(new ArrayList<>())
                 .build();
 
+        String realm = realmName.trim();
+        String clientId = realm + "-admin-product";   // ✅ auto client
+        String adminUsername = "admin";               // ✅ fixed admin user
+
         try {
+            // ============================
+            // Step 1 — Master token
+            // ============================
+            status.addStep("Get Master Token", "IN_PROGRESS", "Authenticating");
             String masterToken = getMasterToken();
+            status.addStep("Get Master Token", "SUCCESS", "Token retrieved");
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.setBearerAuth(masterToken);
-            headers.setContentType(MediaType.APPLICATION_JSON);
-
-            // 1️⃣ Create realm
+            // ============================
+            // Step 2 — Create Realm
+            // ============================
+            status.addStep("Create Realm", "IN_PROGRESS", "Creating realm " + realm);
             createRealm(realm, masterToken);
-            Thread.sleep(800);
+            status.addStep("Create Realm", "SUCCESS", "Realm created");
 
-            // 2️⃣ Create client (password grant ready)
-            String clientUrl = config.getBaseUrl() + "/admin/realms/" + realm + "/clients";
+            // ============================
+            // Step 3 — Create Client
+            // ============================
+            status.addStep("Create Client", "IN_PROGRESS", "Creating client " + clientId);
 
-            Map<String, Object> client = Map.of(
-                    "clientId", clientId,
-                    "enabled", true,
-                    "protocol", "openid-connect",
-                    "publicClient", false,
-                    "directAccessGrantsEnabled", true,
-                    "serviceAccountsEnabled", false,
-                    "standardFlowEnabled", false,
-                    "clientAuthenticatorType", "client-secret",
-                    "consentRequired", false);
-
-            restTemplate.postForEntity(clientUrl, new HttpEntity<>(client, headers), Void.class);
-            Thread.sleep(800);
-
-            // 3️⃣ Client secret
-            String clientSecret = getClientSecretFromKeycloak(realm, clientId);
-
-            // 4️⃣ Create user
-            String userUrl = config.getBaseUrl() + "/admin/realms/" + realm + "/users";
-
-            Map<String, Object> user = Map.of(
-                    "username", adminUsername,
-                    "email", adminEmail,
-                    "enabled", true,
-                    "emailVerified", true,
-                    "requiredActions", List.of(),
-                    "credentials", List.of(
-                            Map.of(
-                                    "type", "password",
-                                    "value", adminPassword,
-                                    "temporary", false)));
-
-            restTemplate.postForEntity(userUrl, new HttpEntity<>(user, headers), Void.class);
-            Thread.sleep(800);
-
-            // 🔥 5️⃣ CLEAR REQUIRED ACTIONS (THIS WAS MISSING)
-
-            String searchUrl = config.getBaseUrl()
-                    + "/admin/realms/" + realm + "/users?username=" + adminUsername;
-
-            ResponseEntity<List> users = restTemplate.exchange(
-                    searchUrl,
-                    HttpMethod.GET,
-                    new HttpEntity<>(headers),
-                    List.class);
-
-            String userId = (String) ((Map) users.getBody().get(0)).get("id");
-
-            String clearUrl = config.getBaseUrl()
-                    + "/admin/realms/" + realm + "/users/" + userId;
-
-            Map<String, Object> clear = Map.of("requiredActions", List.of());
-
-            restTemplate.exchange(
-                    clearUrl,
-                    HttpMethod.PUT,
-                    new HttpEntity<>(clear, headers),
-                    Void.class);
-
-            Thread.sleep(500);
-
-            // 6️⃣ Get token (NOW IT WORKS)
-            Map<String, Object> token = getRealmToken(
+            String clientUUID = createClient(
                     realm,
-                    adminUsername,
-                    adminPassword,
                     clientId,
-                    clientSecret);
+                    false,          // private client (admin product)
+                    masterToken
+            );
 
+            status.addStep("Create Client", "SUCCESS", "Client created: " + clientUUID);
+
+            // ============================
+            // Step 4 — Create Admin User
+            // ============================
+            status.addStep("Create Admin User", "IN_PROGRESS", "Creating admin user");
+
+            Map<String, Object> userPayload = new HashMap<>();
+            userPayload.put("username", adminUsername);
+            userPayload.put("enabled", true);
+            userPayload.put("emailVerified", true);
+
+            Map<String, Object> credentials = Map.of(
+                    "type", "password",
+                    "value", adminPassword,
+                    "temporary", false
+            );
+
+            userPayload.put("credentials", List.of(credentials));
+
+            String userId = createUser(realm, masterToken, userPayload);
+
+            status.addStep("Create Admin User", "SUCCESS", "Admin user created");
+
+            // ============================
+            // Step 5 — Assign Admin Roles
+            // ============================
+            status.addStep("Assign Roles", "IN_PROGRESS", "Assigning admin permissions");
+
+            List<String> adminRoles = List.of(
+                    "create-client",
+                    "impersonation",
+                    "manage-realm",
+                    "manage-users",
+                    "manage-clients"
+            );
+
+            for (String role : adminRoles) {
+                assignRealmManagementRoleToUser(realm, userId, role, masterToken);
+            }
+
+            status.addStep("Assign Roles", "SUCCESS", "Admin roles assigned");
+
+            // ============================
+            // Done
+            // ============================
             status.setStatus("SUCCESS");
-            status.setMessage("Realm provisioned successfully");
-            status.setToken(token);
+            status.setMessage("Signup completed successfully");
 
             return status;
 
         } catch (Exception e) {
+            log.error("Signup failed for realm '{}'", realm, e);
+
             status.setStatus("FAILED");
-            status.setMessage("Provisioning failed: " + e.getMessage());
+            status.setMessage("Signup failed: " + e.getMessage());
+
             return status;
         }
     }
+
+    // ------------------SIGNUP end---------------------------
+    // ------------------SIGNUP end---------------------------
+    // ------------------SIGNUP end---------------------------
+    // ------------------SIGNUP end---------------------------
+    // ------------------SIGNUP end---------------------------
+
 
     // // ---------------- SIGNUP ----------------
     // @Override
