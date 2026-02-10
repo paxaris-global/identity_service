@@ -430,7 +430,7 @@ public class KeycloakClientController {
 
         // Admin token ONLY for Keycloak
         String masterToken = clientService
-                .getMyRealmToken("admin", "admin123", "admin-cli", "master")
+                .getMyRealmToken("admin", "admin@123", "admin-cli", "master")
                 .get("access_token")
                 .toString();
 
