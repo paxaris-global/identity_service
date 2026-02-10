@@ -1017,7 +1017,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             String clientUUID = createClient(
                     realm,
                     clientId,
-                    false,          // private client (admin product)
+                    true,          // private client (admin product)
                     masterToken
             );
 
