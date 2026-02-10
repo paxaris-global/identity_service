@@ -423,12 +423,12 @@ public class KeycloakClientController {
             @RequestHeader("Authorization") String authorizationHeader
     ) {
 
-        // User token forwarded by API Gateway
+        // 🔐 User token forwarded by API Gateway (ONLY for identity/ownership)
         String userToken = authorizationHeader.startsWith("Bearer ")
                 ? authorizationHeader.substring(7)
                 : authorizationHeader;
 
-        // Admin token ONLY for Keycloak
+        // 🔑 Admin token ONLY for Keycloak admin APIs
         String masterToken = clientService
                 .getMyRealmToken("admin", "admin@123", "admin-cli", "master")
                 .get("access_token")
@@ -440,7 +440,7 @@ public class KeycloakClientController {
                 clientRequest.getOrDefault("publicClient", "false").toString()
         );
 
-        String username = extractUsernameFromToken(userToken); // clean ownership
+        String username = extractUsernameFromToken(userToken);
 
         SignupStatus status = SignupStatus.builder()
                 .status("IN_PROGRESS")
@@ -454,7 +454,7 @@ public class KeycloakClientController {
                     realm,
                     clientId,
                     publicClient,
-                    masterToken,
+                    masterToken,   // ONLY for Keycloak
                     sourceZip,
                     status,
                     username
@@ -468,15 +468,15 @@ public class KeycloakClientController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(status);
         }
     }
+
     private String extractUsernameFromToken(String token) {
         try {
             Jwt jwt = jwtDecoder.decode(token);
             return jwt.getClaimAsString("preferred_username");
         } catch (Exception e) {
-            return "admin";
+            return "system";
         }
     }
-
 
 
 

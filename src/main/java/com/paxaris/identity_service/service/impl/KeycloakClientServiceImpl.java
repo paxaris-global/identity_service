@@ -371,17 +371,20 @@ public String createClient(
         String realm,
         String clientId,
         boolean isPublicClient,
-        String token,
+        String adminToken,
         MultipartFile sourceZip,
         SignupStatus status,
-        String adminUsername) {
+        String ownerUsername) {
 
     Path extractedCodePath = null;
 
     try {
-        // =========================
-        // Step 1 — Create Keycloak Client
-        // =========================
+
+        // ====================================================
+        // Step 1 — Create Keycloak Client (ADMIN TOKEN ONLY)
+        // ====================================================
+        status.addStep("Create Client", "IN_PROGRESS", "Creating Keycloak client");
+
         String url = config.getBaseUrl() + "/admin/realms/" + realm + "/clients";
 
         Map<String, Object> body = new HashMap<>();
@@ -403,74 +406,71 @@ public String createClient(
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(token);
+        headers.setBearerAuth(adminToken);
 
-        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+        restTemplate.exchange(
+                url,
+                HttpMethod.POST,
+                new HttpEntity<>(body, headers),
+                Void.class
+        );
 
-        ResponseEntity<String> response =
-                restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
+        String clientUUID = getClientUUID(realm, clientId, adminToken);
 
-        if (!response.getStatusCode().is2xxSuccessful()) {
-            throw new RuntimeException("Keycloak client creation failed: " + response.getStatusCode());
-        }
+        status.addStep("Create Client", "SUCCESS",
+                "Client created: " + clientUUID);
 
-        String clientUUID = getClientUUID(realm, clientId, token);
-
-        status.addStep("Create Client", "SUCCESS", "Client created: " + clientUUID);
-
-        // =========================
+        // ====================================================
         // Step 2 — Extract ZIP
-        // =========================
+        // ====================================================
         status.addStep("Extract Application Code", "IN_PROGRESS", "Extracting ZIP");
 
-        extractedCodePath = Files.createTempDirectory(
-                "signup-extract-" + System.currentTimeMillis());
-
+        extractedCodePath = Files.createTempDirectory("signup-extract-");
         extractZipFile(sourceZip, extractedCodePath);
 
         status.addStep("Extract Application Code", "SUCCESS", "ZIP extracted");
 
-        // =========================
+        // ====================================================
         // Step 3 — Generate Repo Name
-        // =========================
+        // ====================================================
         String repoName = ProvisioningService.generateRepositoryName(
                 realm,
-                adminUsername,
+                ownerUsername,
                 clientId
         );
 
         status.addStep("Generate Repository Name", "SUCCESS",
-                "Repository name generated: " + repoName);
+                repoName);
 
-        // =========================
-        // Step 4 — Create GitHub Repo
-        // =========================
+        // ====================================================
+        // Step 4 — Create GitHub Repository
+        // ====================================================
         status.addStep("Create GitHub Repository", "IN_PROGRESS",
-                "Creating repository " + repoName);
+                "Creating " + repoName);
 
         provisioningService.createRepo(repoName);
 
         status.addStep("Create GitHub Repository", "SUCCESS",
-                "Repository created successfully");
+                "Repository created");
 
-        // =========================
+        // ====================================================
         // Step 5 — Upload Code
-        // =========================
+        // ====================================================
         status.addStep("Upload Code to GitHub", "IN_PROGRESS",
                 "Uploading code");
 
         uploadDirectoryToGitHub(extractedCodePath, repoName);
 
         status.addStep("Upload Code to GitHub", "SUCCESS",
-                "Code uploaded successfully");
+                "Code uploaded");
 
-        // =========================
+        // ====================================================
         // Cleanup
-        // =========================
+        // ====================================================
         cleanupDirectory(extractedCodePath);
 
         status.setStatus("SUCCESS");
-        status.setMessage("Client + application provisioned successfully");
+        status.setMessage("Provisioning completed successfully");
 
         return clientUUID;
 
