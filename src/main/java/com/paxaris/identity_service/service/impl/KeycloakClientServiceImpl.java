@@ -973,6 +973,52 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 //            return status;
 //        }
 //    }
+
+    public String createClients(String realm, String clientId, boolean isPublicClient, String token) {
+
+        String url = config.getBaseUrl() + "/admin/realms/" + realm + "/clients";
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("clientId", clientId);
+        body.put("enabled", true);
+        body.put("protocol", "openid-connect");
+
+        // ✅ Always confidential (client secret)
+        body.put("publicClient", false);
+        body.put("clientAuthenticatorType", "client-secret");
+
+        // ✅ Allow username/password login
+        body.put("directAccessGrantsEnabled", true);
+
+        // ✅ Enable service account (recommended)
+        body.put("serviceAccountsEnabled", true);
+
+        // 🚫 Disable browser flows (backend only)
+        body.put("standardFlowEnabled", false);
+        body.put("implicitFlowEnabled", false);
+
+        // ✅ MUST be false or password grant fails silently
+        body.put("bearerOnly", false);
+
+        // 🚫 DO NOT enable unless you configure UMA
+        // body.put("authorizationServicesEnabled", true);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(token);
+
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+
+        ResponseEntity<String> response =
+                restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
+
+        if (!response.getStatusCode().is2xxSuccessful()) {
+            throw new RuntimeException("Failed to create client: " + response.getStatusCode());
+        }
+
+        return getClientUUID(realm, clientId, token);
+    }
+
     @Override
     public SignupStatus signup(String realmName, String adminPassword) {
 
@@ -1014,7 +1060,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             // ============================
             status.addStep("Create Client", "IN_PROGRESS", "Creating client " + clientId);
 
-            String clientUUID = createClient(
+            String clientUUID = createClients(
                     realm,
                     clientId,
                     false,          // private client (admin product)
