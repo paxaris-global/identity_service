@@ -412,19 +412,27 @@ public class KeycloakClientController {
     }
 
     // ------------------- CLIENT -------------------
-    @PostMapping(value = "/identity/{realm}/clients", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(
+            value = "/identity/{realm}/clients",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
     public ResponseEntity<SignupStatus> createClient(
             @PathVariable String realm,
             @RequestPart("client") Map<String, Object> clientRequest,
-            @RequestPart("sourceZip") MultipartFile sourceZip) {
+            @RequestPart("sourceZip") MultipartFile sourceZip,
+            @RequestHeader("Authorization") String authorizationHeader
+    ) {
 
-        // Get master token
-        String masterToken = clientService.getMyRealmToken(
-                "admin",
-                "admin@123",
-                "admin-cli",
-                "master"
-        ).get("access_token").toString();
+        // User token forwarded by API Gateway
+        String userToken = authorizationHeader.startsWith("Bearer ")
+                ? authorizationHeader.substring(7)
+                : authorizationHeader;
+
+        // Admin token ONLY for Keycloak
+        String masterToken = clientService
+                .getMyRealmToken("admin", "admin123", "admin-cli", "master")
+                .get("access_token")
+                .toString();
 
         String clientId = clientRequest.get("clientId").toString();
 
@@ -432,13 +440,16 @@ public class KeycloakClientController {
                 clientRequest.getOrDefault("publicClient", "false").toString()
         );
 
+        String username = extractUsernameFromToken(userToken); // clean ownership
+
         SignupStatus status = SignupStatus.builder()
                 .status("IN_PROGRESS")
-                .message("Client provisioning started")
+                .message("Provisioning started")
                 .steps(new ArrayList<>())
                 .build();
 
         try {
+
             clientService.createClient(
                     realm,
                     clientId,
@@ -446,16 +457,27 @@ public class KeycloakClientController {
                     masterToken,
                     sourceZip,
                     status,
-                    "admin"   // or pull from auth context
+                    username
             );
 
             return ResponseEntity.ok(status);
 
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(status);
+            status.setStatus("FAILED");
+            status.setMessage(e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(status);
         }
     }
+    private String extractUsernameFromToken(String token) {
+        try {
+            Jwt jwt = jwtDecoder.decode(token);
+            return jwt.getClaimAsString("preferred_username");
+        } catch (Exception e) {
+            return "admin";
+        }
+    }
+
+
 
 
     // ---------------------------------get all clients
