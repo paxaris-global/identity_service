@@ -1037,8 +1037,11 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
                 .build();
 
         String realm = realmName.trim();
-        String clientId = realm + "-admin-product";   // ✅ auto client
-        String adminUsername = "admin";               // ✅ fixed admin user
+        String clientId = realm + "-admin-product";
+        String adminUsername = "admin";
+        String adminEmail = "admin@paxarisglobal.com";
+        String adminFname = "adminFirstName";
+        String adminLname = "adminLastName";
 
         try {
             // ============================
@@ -1076,9 +1079,12 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 
             Map<String, Object> userPayload = new HashMap<>();
             userPayload.put("username", adminUsername);
+            userPayload.put("email", adminEmail);
+            userPayload.put("firstName", adminFname);
+            userPayload.put("lastName", adminLname);
             userPayload.put("enabled", true);
             userPayload.put("emailVerified", true);
-            userPayload.put("requiredActions", List.of());
+            userPayload.put("requiredActions", Collections.emptyList());
 
             Map<String, Object> credentials = Map.of(
                     "type", "password",
