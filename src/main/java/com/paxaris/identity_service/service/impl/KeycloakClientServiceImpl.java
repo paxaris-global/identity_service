@@ -1032,6 +1032,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
             userPayload.put("username", adminUsername);
             userPayload.put("enabled", true);
             userPayload.put("emailVerified", true);
+            userPayload.put("requiredActions", List.of());
 
             Map<String, Object> credentials = Map.of(
                     "type", "password",
