@@ -365,6 +365,27 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
 //        // Return the client UUID
 //        return getClientUUID(realm, clientId, token);
 //    }
+private void ensureClientSecret(String realm, String clientUUID, String token) {
+
+    String url = config.getBaseUrl()
+            + "/admin/realms/" + realm
+            + "/clients/" + clientUUID
+            + "/client-secret";
+
+    HttpHeaders headers = new HttpHeaders();
+    headers.setBearerAuth(token);
+
+    ResponseEntity<Map> response = restTemplate.exchange(
+            url,
+            HttpMethod.POST,   // forces secret regeneration
+            new HttpEntity<>(headers),
+            Map.class
+    );
+
+    if (!response.getStatusCode().is2xxSuccessful()) {
+        throw new RuntimeException("Failed to generate client secret");
+    }
+}
 
 @Override
 public String createClient(
@@ -391,17 +412,27 @@ public String createClient(
         body.put("clientId", clientId);
         body.put("enabled", true);
         body.put("protocol", "openid-connect");
-        body.put("publicClient", isPublicClient);
-        body.put("standardFlowEnabled", true);
-        body.put("directAccessGrantsEnabled", true);
 
         if (isPublicClient) {
-            body.put("clientAuthenticatorType", "client-id");
-            body.put("redirectUris", List.of("*"));
+
+            // 🌍 PUBLIC FRONTEND CLIENT
+            body.put("publicClient", true);
+            body.put("standardFlowEnabled", true);          // browser login
+            body.put("directAccessGrantsEnabled", false);
             body.put("serviceAccountsEnabled", false);
+            body.put("redirectUris", List.of("*"));
+
         } else {
+
+            // 🔐 CONFIDENTIAL BACKEND CLIENT
+            body.put("publicClient", false);
             body.put("clientAuthenticatorType", "client-secret");
             body.put("serviceAccountsEnabled", true);
+            body.put("directAccessGrantsEnabled", true);
+
+            body.put("standardFlowEnabled", false);
+            body.put("implicitFlowEnabled", false);
+            body.put("bearerOnly", false);
         }
 
         HttpHeaders headers = new HttpHeaders();
@@ -417,9 +448,16 @@ public String createClient(
 
         String clientUUID = getClientUUID(realm, clientId, adminToken);
 
-        status.addStep("Create Client", "SUCCESS",
-                "Client created: " + clientUUID);
+        // 🔑 ENSURE SECRET EXISTS FOR CONFIDENTIAL CLIENT
+        if (!isPublicClient) {
+            ensureClientSecret(realm, clientUUID, adminToken);
+        }
 
+        status.addStep(
+                "Create Client",
+                "SUCCESS",
+                "Client created: " + clientUUID
+        );
         // ====================================================
         // Step 2 — Extract ZIP
         // ====================================================
