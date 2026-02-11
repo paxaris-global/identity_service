@@ -1048,6 +1048,10 @@ public String createClient(
     @Override
     public SignupStatus signup(String realmName, String adminPassword) {
 
+        WebClient webClient = WebClient.builder()
+                .baseUrl(projectManagementBaseUrl)
+                .build();
+
         if (realmName == null || realmName.isBlank()) {
             throw new IllegalArgumentException("Realm name is required");
         }
@@ -1134,12 +1138,35 @@ public String createClient(
                     "impersonation",
                     "manage-realm",
                     "manage-users",
-                    "manage-clients"
+                    "manage-clients",
+                    "admin"
             );
 
             for (String role : adminRoles) {
                 assignRealmManagementRoleToUser(realm, userId, role, masterToken);
             }
+
+            try {
+                RoleRequest pmRequest = new RoleRequest();
+                pmRequest.setRealmName(realm);
+                pmRequest.setProductName(clientId);
+                pmRequest.setRoleName("admin");
+                pmRequest.setUrls(Collections.emptyList());
+
+                webClient.post()
+                        .uri("/project/roles/save-or-update")
+                        .bodyValue(pmRequest)
+                        .retrieve()
+                        .toBodilessEntity()
+                        .block();
+
+                log.info("📦 Role '{}' registered in Project Manager", "admin");
+
+            } catch (Exception e) {
+                // don't break role creation if PM is down
+                log.warn("⚠ PM registration failed for '{}': {}", "admin", e.getMessage());
+            }
+
 
             status.addStep("Assign Roles", "SUCCESS", "Admin roles assigned");
 
