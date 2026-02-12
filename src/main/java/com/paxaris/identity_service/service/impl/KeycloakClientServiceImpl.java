@@ -883,22 +883,47 @@ public String createClient(
 
 
     @Override
-    public boolean deleteRole(String realm, String clientUUID, String roleName, String token) {
-        log.info("Attempting to delete role '{}' for client with UUID '{}' in realm '{}'", roleName, clientUUID, realm);
+    public boolean deleteRole(
+            String realm,
+            String clientName,   // 👈 NAME, not UUID
+            String roleName,
+            String token) {
+
+        log.info("Deleting role '{}' for client '{}' in realm '{}'",
+                roleName, clientName, realm);
+
         try {
-            String url = config.getBaseUrl() + "/admin/realms/" + realm + "/clients/" + clientUUID + "/roles/"
-                    + roleName;
+            // 🔑 Resolve UUID once (correct way)
+            String clientUUID = getClientUUID(realm, clientName, token);
+
+            String url = config.getBaseUrl()
+                    + "/admin/realms/" + realm
+                    + "/clients/" + clientUUID
+                    + "/roles/" + roleName;
+
             HttpHeaders headers = new HttpHeaders();
             headers.setBearerAuth(token);
 
-            restTemplate.exchange(url, HttpMethod.DELETE, new HttpEntity<>(headers), String.class);
-            log.info("Role '{}' deleted successfully.", roleName);
+            restTemplate.exchange(
+                    url,
+                    HttpMethod.DELETE,
+                    new HttpEntity<>(headers),
+                    Void.class
+            );
+
+            log.info("✅ Role '{}' deleted successfully", roleName);
             return true;
+
+        } catch (HttpClientErrorException.NotFound e) {
+            log.error("❌ Role '{}' not found", roleName);
+            throw new RuntimeException("Role not found: " + roleName);
+
         } catch (Exception e) {
-            log.error("Failed to delete role '{}': {}", roleName, e.getMessage());
-            return false;
+            log.error("❌ Failed to delete role '{}': {}", roleName, e.getMessage(), e);
+            throw new RuntimeException("Failed to delete role", e);
         }
     }
+
 
     @Override
     public List<Map<String, Object>> getAllRoles(String realm, String clientId, String token) {

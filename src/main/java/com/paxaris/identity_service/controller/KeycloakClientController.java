@@ -635,22 +635,32 @@ public class KeycloakClientController {
 
 
     // -----------------------------------------------------------------------------------------------------------------------------
-    @DeleteMapping("/role/{realm}/{client}/{roleName}")
+    @DeleteMapping("/identity/role/{realm}/{client}/{roleName}")
     public ResponseEntity<String> deleteRole(
             @PathVariable String realm,
             @PathVariable String client,
             @PathVariable String roleName) {
+
         try {
-            String masterToken = clientService.getMyRealmToken("admin", "admin123", "admin-cli", "master")
-                    .get("access_token").toString();
-            String clientUUID = clientService.getClientId(realm, client, masterToken);
-            boolean ok = clientService.deleteRole(realm, clientUUID, roleName, masterToken);
-            return ok ? ResponseEntity.ok("Role deleted successfully")
+            String masterToken = clientService.getMasterTokenInternally();
+
+            boolean ok = clientService.deleteRole(
+                    realm,
+                    client,     // ✅ client NAME (ex: "karan")
+                    roleName,
+                    masterToken
+            );
+
+            return ok
+                    ? ResponseEntity.ok("Role deleted successfully")
                     : ResponseEntity.badRequest().body("Failed to delete role");
+
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Failed to delete role: " + e.getMessage());
+            return ResponseEntity.status(500)
+                    .body("Failed to delete role: " + e.getMessage());
         }
     }
+
 
     // ------------------- ASSIGN ROLE -------------------
     @PostMapping("identity/{realm}/users/{username}/clients/{clientName}/roles")
