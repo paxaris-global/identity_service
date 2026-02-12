@@ -611,12 +611,12 @@ public class KeycloakClientController {
             // ✅ Proper admin token
             String masterToken = clientService.getMasterTokenInternally();
 
-            // ✅ Get real client UUID
-            String clientUUID = clientService.getClientUUID(realm, client, masterToken);
+//            // ✅ Get real client UUID
+//            String clientUUID = clientService.getClientUUID(realm, client, masterToken);
 
             boolean ok = clientService.updateRole(
                     realm,
-                    clientUUID,
+                    client,
                     roleName,
                     role,
                     masterToken
