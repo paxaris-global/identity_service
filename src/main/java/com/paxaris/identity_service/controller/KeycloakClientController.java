@@ -698,8 +698,61 @@ public class KeycloakClientController {
         return ResponseEntity.ok("Client roles assigned successfully");
     }
 
+//    -----------------------------------------update the user
+@PutMapping("/identity/users/{realm}/{userId}")
+public ResponseEntity<String> updateUser(
+        @PathVariable String realm,
+        @PathVariable String userId,
+        @RequestHeader("Authorization") String authorizationHeader,
+        @RequestBody Map<String, Object> userPayload) {
+
+    String token = authorizationHeader.startsWith("Bearer ")
+            ? authorizationHeader.substring(7)
+            : authorizationHeader;
+
+    try {
+        clientService.updateUser(realm, userId, token, userPayload);
+        return ResponseEntity.ok("User updated successfully");
+    } catch (Exception e) {
+        return ResponseEntity.status(500)
+                .body("Failed to update user: " + e.getMessage());
+    }
+}
+
+
+//--------------------update the user client role
+@PutMapping("/identity/{realm}/users/{username}/clients/{clientName}/roles")
+public ResponseEntity<String> updateUserClientRoles(
+        @PathVariable String realm,
+        @PathVariable String username,
+        @PathVariable String clientName,
+        @RequestBody List<String> newRoles) {
+
+    log.info("➡️ Updating roles for user {}", username);
+
+    try {
+        String masterToken = clientService.getMasterTokenInternally();
+
+        clientService.updateUserClientRoles(
+                realm,
+                username,
+                clientName,
+                newRoles,
+                masterToken
+        );
+
+        return ResponseEntity.ok("User roles updated successfully");
+
+    } catch (Exception e) {
+        log.error("❌ Update roles failed", e);
+        return ResponseEntity.status(500).body(e.getMessage());
+    }
+}
+ss
+
 
 //    resolve admin token problem
 //    String masterToken = clientService.getMasterTokenInternally();
+
 
 }

@@ -86,4 +86,23 @@ public interface KeycloakClientService {
         // get all clients
         List<Map<String, Object>> getClientRoles(String realm, String clientName, String token);
 
+//        update user
+
+
+                void updateUser(
+                        String realm,
+                        String userId,
+                        String token,
+                        Map<String, Object> userPayload
+                );
+
+// ------------------------------updat theuser client role
+void updateUserClientRoles(
+        String realm,
+        String username,
+        String clientName,
+        List<String> newRoles,
+        String token
+);
+
 }

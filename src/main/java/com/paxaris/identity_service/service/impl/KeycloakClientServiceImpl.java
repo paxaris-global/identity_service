@@ -665,6 +665,54 @@ public String createClient(
         }
     }
 
+//----------------------------------    update user
+@Override
+public void updateUser(
+        String realm,
+        String userId,
+        String token,
+        Map<String, Object> userPayload) {
+
+    log.info("Updating user {} in realm {}", userId, realm);
+
+    try {
+        String url = config.getBaseUrl()
+                + "/admin/realms/" + realm
+                + "/users/" + userId;
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        HttpEntity<Map<String, Object>> entity =
+                new HttpEntity<>(userPayload, headers);
+
+        restTemplate.exchange(
+                url,
+                HttpMethod.PUT,
+                entity,
+                Void.class
+        );
+
+        log.info("✅ User updated successfully");
+
+    } catch (HttpClientErrorException.NotFound e) {
+        throw new RuntimeException("User not found: " + userId);
+
+    } catch (HttpClientErrorException.Forbidden e) {
+        throw new RuntimeException("Not authorized to update user");
+
+    } catch (Exception e) {
+        log.error("❌ Failed to update user", e);
+        throw new RuntimeException("Update failed", e);
+    }
+}
+
+
+
+
+
+
     // ---------------- ROLE ----------------
     @Override
     public void createClientRoles(String realm,
@@ -1100,6 +1148,100 @@ public String createClient(
         headers.setBearerAuth(token);
         return headers;
     }
+
+
+//--------------------------    update assugn user to client role
+@Override
+public void updateUserClientRoles(
+        String realm,
+        String username,
+        String clientName,
+        List<String> newRoleNames,
+        String token) {
+
+    log.info("Updating roles {} for user '{}'", newRoleNames, username);
+
+    try {
+        String userId = resolveUserId(realm, username, token);
+        String clientUUID = getClientUUID(realm, clientName, token);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        // 🔍 1. Get current roles
+        String currentRolesUrl = config.getBaseUrl()
+                + "/admin/realms/" + realm
+                + "/users/" + userId
+                + "/role-mappings/clients/" + clientUUID;
+
+        ResponseEntity<List<Map<String, Object>>> currentResp =
+                restTemplate.exchange(
+                        currentRolesUrl,
+                        HttpMethod.GET,
+                        new HttpEntity<>(headers),
+                        new ParameterizedTypeReference<>() {}
+                );
+
+        List<Map<String, Object>> currentRoles =
+                currentResp.getBody() == null ? new ArrayList<>() : currentResp.getBody();
+
+        log.info("Current roles = {}", currentRoles.stream()
+                .map(r -> r.get("name")).toList());
+
+        // 🧹 2. Remove existing roles (if any)
+        if (!currentRoles.isEmpty()) {
+
+            restTemplate.exchange(
+                    currentRolesUrl,
+                    HttpMethod.DELETE,
+                    new HttpEntity<>(currentRoles, headers),
+                    Void.class
+            );
+
+            log.info("🗑 Old roles removed");
+        }
+
+        // ➕ 3. Fetch new role representations
+        List<Map<String, Object>> newRoleReps = new ArrayList<>();
+
+        for (String roleName : newRoleNames) {
+            String roleUrl = config.getBaseUrl()
+                    + "/admin/realms/" + realm
+                    + "/clients/" + clientUUID
+                    + "/roles/" + roleName;
+
+            ResponseEntity<Map<String, Object>> roleResp =
+                    restTemplate.exchange(
+                            roleUrl,
+                            HttpMethod.GET,
+                            new HttpEntity<>(headers),
+                            new ParameterizedTypeReference<>() {}
+                    );
+
+            newRoleReps.add(roleResp.getBody());
+        }
+
+        // ➕ 4. Assign new roles
+        restTemplate.exchange(
+                currentRolesUrl,
+                HttpMethod.POST,
+                new HttpEntity<>(newRoleReps, headers),
+                Void.class
+        );
+
+        log.info("✅ Roles updated successfully");
+
+    } catch (Exception e) {
+        log.error("❌ Failed updating roles", e);
+        throw new RuntimeException("Update roles failed: " + e.getMessage(), e);
+    }
+}
+
+
+
+
+
 
     // ------------------SIGNUP---------------------------
 
