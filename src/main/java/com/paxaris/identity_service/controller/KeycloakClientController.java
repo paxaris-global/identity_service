@@ -606,17 +606,33 @@ public class KeycloakClientController {
             @PathVariable String client,
             @PathVariable String roleName,
             @RequestBody RoleCreationRequest role) {
+
         try {
-            String masterToken = clientService.getMyRealmToken("admin", "admin123", "admin-cli", "master")
-                    .get("access_token").toString();
-            String clientUUID = clientService.getClientId(realm, client, masterToken);
-            boolean ok = clientService.updateRole(realm, clientUUID, roleName, role, masterToken);
-            return ok ? ResponseEntity.ok("Role updated successfully")
+            // ✅ Proper admin token
+            String masterToken = clientService.getMasterTokenInternally();
+
+            // ✅ Get real client UUID
+            String clientUUID = clientService.getClientUUID(realm, client, masterToken);
+
+            boolean ok = clientService.updateRole(
+                    realm,
+                    clientUUID,
+                    roleName,
+                    role,
+                    masterToken
+            );
+
+            return ok
+                    ? ResponseEntity.ok("Role updated successfully")
                     : ResponseEntity.badRequest().body("Failed to update role");
+
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Failed to update role: " + e.getMessage());
+            return ResponseEntity
+                    .status(500)
+                    .body("Failed to update role: " + e.getMessage());
         }
     }
+
 
     // -----------------------------------------------------------------------------------------------------------------------------
     @DeleteMapping("/role/{realm}/{client}/{roleName}")
@@ -658,5 +674,9 @@ public class KeycloakClientController {
 
         return ResponseEntity.ok("Client roles assigned successfully");
     }
+
+
+//    resolve admin token problem
+//    String masterToken = clientService.getMasterTokenInternally();
 
 }
