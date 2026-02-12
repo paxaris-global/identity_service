@@ -91,7 +91,7 @@ public interface KeycloakClientService {
 
                 void updateUser(
                         String realm,
-                        String userId,
+                        String username,
                         String token,
                         Map<String, Object> userPayload
                 );

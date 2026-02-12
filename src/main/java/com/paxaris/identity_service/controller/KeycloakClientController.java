@@ -702,7 +702,7 @@ public class KeycloakClientController {
 @PutMapping("/identity/users/{realm}/{userId}")
 public ResponseEntity<String> updateUser(
         @PathVariable String realm,
-        @PathVariable String userId,
+        @PathVariable String username,
         @RequestHeader("Authorization") String authorizationHeader,
         @RequestBody Map<String, Object> userPayload) {
 
@@ -711,7 +711,7 @@ public ResponseEntity<String> updateUser(
             : authorizationHeader;
 
     try {
-        clientService.updateUser(realm, userId, token, userPayload);
+        clientService.updateUser(realm, username, token, userPayload);
         return ResponseEntity.ok("User updated successfully");
     } catch (Exception e) {
         return ResponseEntity.status(500)

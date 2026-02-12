@@ -669,11 +669,13 @@ public String createClient(
 @Override
 public void updateUser(
         String realm,
-        String userId,
+        String username,
         String token,
         Map<String, Object> userPayload) {
 
-    log.info("Updating user {} in realm {}", userId, realm);
+    log.info("Updating user {} in realm {}", username, realm);
+
+    String userId = resolveUserId( realm,  username,  token);
 
     try {
         String url = config.getBaseUrl()
