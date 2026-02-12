@@ -883,18 +883,20 @@ public String createClient(
 
 
     @Override
-    public boolean deleteRole(
+    public void deleteClientRole(
             String realm,
-            String clientName,   // 👈 NAME, not UUID
+            String clientName,   // clientId (NOT UUID)
             String roleName,
             String token) {
 
-        log.info("Deleting role '{}' for client '{}' in realm '{}'",
+        log.info("🗑 Deleting client role '{}' from client '{}' in realm '{}'",
                 roleName, clientName, realm);
 
         try {
-            // 🔑 Resolve UUID once (correct way)
+            // 🔑 Resolve client UUID properly
             String clientUUID = getClientUUID(realm, clientName, token);
+
+            log.info("Resolved client UUID = {}", clientUUID);
 
             String url = config.getBaseUrl()
                     + "/admin/realms/" + realm
@@ -904,23 +906,25 @@ public String createClient(
             HttpHeaders headers = new HttpHeaders();
             headers.setBearerAuth(token);
 
-            restTemplate.exchange(
+            ResponseEntity<Void> response = restTemplate.exchange(
                     url,
                     HttpMethod.DELETE,
                     new HttpEntity<>(headers),
                     Void.class
             );
 
-            log.info("✅ Role '{}' deleted successfully", roleName);
-            return true;
+            if (!response.getStatusCode().is2xxSuccessful()) {
+                throw new RuntimeException(
+                        "Keycloak refused delete: " + response.getStatusCode());
+            }
+
+            log.info("✅ Client role '{}' deleted successfully", roleName);
 
         } catch (HttpClientErrorException.NotFound e) {
-            log.error("❌ Role '{}' not found", roleName);
             throw new RuntimeException("Role not found: " + roleName);
 
         } catch (Exception e) {
-            log.error("❌ Failed to delete role '{}': {}", roleName, e.getMessage(), e);
-            throw new RuntimeException("Failed to delete role", e);
+            throw new RuntimeException("Failed to delete client role: " + e.getMessage(), e);
         }
     }
 

@@ -66,7 +66,7 @@ public interface KeycloakClientService {
 
         boolean updateRole(String realm, String clientUUID, String roleName, RoleCreationRequest role, String token);
 
-        boolean deleteRole(String realm, String clientUUID, String roleName, String token);
+        void deleteClientRole(String realm, String clientName, String roleName, String token);
 
         List<Map<String, Object>> getAllRoles(String realm, String clientId, String token);
 
