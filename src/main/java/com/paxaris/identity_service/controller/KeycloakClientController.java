@@ -635,7 +635,8 @@ public class KeycloakClientController {
 
 
     // -----------------------------------------------------------------------------------------------------------------------------
-    @DeleteMapping("identity/role/{realm}/{client}/{roleName}")
+
+    @DeleteMapping("/identity/role/{realm}/{client}/{roleName}")
     public ResponseEntity<String> deleteClientRole(
             @PathVariable String realm,
             @PathVariable String client,
