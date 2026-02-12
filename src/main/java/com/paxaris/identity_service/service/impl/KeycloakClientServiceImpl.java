@@ -39,13 +39,11 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
     private final ProvisioningService provisioningService;
-    // private final DockerHubService dockerHubService;
-    // private final DockerBuildService dockerBuildService;
     @Value("${project.management.base-url}")
     private String projectManagementBaseUrl;
     @Value("${docker.hub.username}")
     private String dockerHubUsername;
-    private WebClient webClient;
+    private final WebClient webClient;
 
     // This method is now private and used internally to avoid duplication
     private String getMasterToken() {

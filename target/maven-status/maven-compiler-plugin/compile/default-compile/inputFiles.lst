@@ -2,6 +2,7 @@ D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\config\KeycloakRealmAndClientRoleConverter.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\config\SecurityConfig.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\config\SwaggerConfig.java
+D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\config\WebClientConfig.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\controller\AccessValidationController.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\controller\AuthController.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\controller\CrudKeycloakApiController.java

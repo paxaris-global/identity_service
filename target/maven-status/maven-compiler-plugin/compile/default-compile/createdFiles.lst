@@ -15,6 +15,7 @@ com\paxaris\identity_service\controller\KeycloakClientController.class
 com\paxaris\identity_service\service\DynamicJwtDecoder.class
 com\paxaris\identity_service\config\JwtDecoderConfig.class
 com\paxaris\identity_service\config\SecurityConfig.class
+com\paxaris\identity_service\config\WebClientConfig.class
 com\paxaris\identity_service\dto\UrlEntry.class
 com\paxaris\identity_service\service\KeycloakClientService.class
 com\paxaris\identity_service\identityService.class
