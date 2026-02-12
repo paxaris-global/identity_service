@@ -641,22 +641,32 @@ public class KeycloakClientController {
             @PathVariable String client,
             @PathVariable String roleName) {
 
-        try {
-            String masterToken = clientService.getMasterTokenInternally();
+        log.info("➡️ DELETE request received in identity-service");
+        log.info("Realm={}, Client={}, Role={}", realm, client, roleName);
 
+        try {
+            log.info("🔑 Fetching master token...");
+            String masterToken = clientService.getMasterTokenInternally();
+            log.info("✅ Master token received");
+
+            log.info("🚀 Calling service to delete role...");
             clientService.deleteClientRole(
                     realm,
-                    client,      // clientId (ex: test_timmer4-admin-product)
+                    client,
                     roleName,
                     masterToken
             );
 
+            log.info("🎯 Delete completed successfully");
+
             return ResponseEntity.ok("Client role deleted successfully");
 
         } catch (RuntimeException e) {
+            log.error("❌ Business error: {}", e.getMessage());
             return ResponseEntity.badRequest().body(e.getMessage());
 
         } catch (Exception e) {
+            log.error("🔥 System error", e);
             return ResponseEntity.status(500)
                     .body("Failed to delete role: " + e.getMessage());
         }

@@ -885,26 +885,31 @@ public String createClient(
     @Override
     public void deleteClientRole(
             String realm,
-            String clientName,   // clientId (NOT UUID)
+            String clientName,
             String roleName,
             String token) {
 
-        log.info("🗑 Deleting client role '{}' from client '{}' in realm '{}'",
-                roleName, clientName, realm);
+        log.info("🗑 START deleteClientRole()");
+        log.info("Realm={}, Client={}, Role={}", realm, clientName, roleName);
 
         try {
-            // 🔑 Resolve client UUID properly
+            // ============================
+            log.info("🔍 Resolving client UUID...");
             String clientUUID = getClientUUID(realm, clientName, token);
+            log.info("✅ Client UUID resolved: {}", clientUUID);
 
-            log.info("Resolved client UUID = {}", clientUUID);
-
+            // ============================
             String url = config.getBaseUrl()
                     + "/admin/realms/" + realm
                     + "/clients/" + clientUUID
                     + "/roles/" + roleName;
 
+            log.info("🌐 Keycloak DELETE URL = {}", url);
+
             HttpHeaders headers = new HttpHeaders();
             headers.setBearerAuth(token);
+
+            log.info("📡 Sending DELETE to Keycloak...");
 
             ResponseEntity<Void> response = restTemplate.exchange(
                     url,
@@ -913,20 +918,25 @@ public String createClient(
                     Void.class
             );
 
+            log.info("📬 Keycloak response status = {}", response.getStatusCode());
+
             if (!response.getStatusCode().is2xxSuccessful()) {
-                throw new RuntimeException(
-                        "Keycloak refused delete: " + response.getStatusCode());
+                log.error("❌ Delete refused by Keycloak");
+                throw new RuntimeException("Keycloak refused delete: " + response.getStatusCode());
             }
 
-            log.info("✅ Client role '{}' deleted successfully", roleName);
+            log.info("✅ Role successfully deleted in Keycloak");
 
         } catch (HttpClientErrorException.NotFound e) {
+            log.error("🚫 Role not found in Keycloak");
             throw new RuntimeException("Role not found: " + roleName);
 
         } catch (Exception e) {
+            log.error("🔥 Delete failed", e);
             throw new RuntimeException("Failed to delete client role: " + e.getMessage(), e);
         }
     }
+
 
 
     @Override
