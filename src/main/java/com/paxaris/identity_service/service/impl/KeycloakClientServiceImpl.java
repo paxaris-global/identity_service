@@ -1195,8 +1195,7 @@ public String createClient(
                     "impersonation",
                     "manage-realm",
                     "manage-users",
-                    "manage-clients",
-                    "admin"
+                    "manage-clients"
             );
 
             for (String role : adminRoles) {
