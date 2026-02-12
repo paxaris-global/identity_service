@@ -45,6 +45,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
     private String projectManagementBaseUrl;
     @Value("${docker.hub.username}")
     private String dockerHubUsername;
+    private WebClient webClient;
 
     // This method is now private and used internally to avoid duplication
     private String getMasterToken() {
@@ -1083,6 +1084,28 @@ public String createClient(
         return getClientUUID(realm, clientId, token);
     }
 
+    public void increaseTokenTimingAfterRealmCreation(String realm, String masterToken) {
+
+        Map<String, Object> tokenConfig = new HashMap<>();
+        tokenConfig.put("accessTokenLifespan", 7200);
+        tokenConfig.put("ssoSessionIdleTimeout", 28800);
+        tokenConfig.put("ssoSessionMaxLifespan", 86400);
+
+        webClient.put()
+                .uri(config.getBaseUrl() + "/admin/realms/" + realm)
+                .header("Authorization", "Bearer " + masterToken)
+                .header("Content-Type", "application/json")
+                .bodyValue(tokenConfig)
+                .retrieve()
+                .toBodilessEntity()
+                .block();
+
+        log.info("✅ Token timing updated for realm: {}", realm);
+    }
+
+
+
+
     @Override
     public SignupStatus signup(String realmName, String adminPassword) {
 
@@ -1181,6 +1204,9 @@ public String createClient(
             }
 
             status.addStep("Assign Roles", "SUCCESS", "Admin roles assigned");
+
+            increaseTokenTimingAfterRealmCreation(realm, masterToken);
+
 
             // ============================
             // Done
