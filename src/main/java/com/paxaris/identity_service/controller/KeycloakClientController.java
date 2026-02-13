@@ -729,10 +729,15 @@ public ResponseEntity<String> updateUserClientRoles(
         @PathVariable String clientName,
         @RequestBody List<String> newRoles) {
 
-    log.info("➡️ Updating roles for user {}", username);
+    log.info("➡️ Role update request: realm={}, username={}, client={}",
+            realm, username, clientName);
+
+    log.info("📦 New roles received: {}", newRoles);
 
     try {
         String masterToken = clientService.getMasterTokenInternally();
+
+        log.info("🔐 Master token acquired");
 
         clientService.updateUserClientRoles(
                 realm,
@@ -742,10 +747,12 @@ public ResponseEntity<String> updateUserClientRoles(
                 masterToken
         );
 
+        log.info("✅ Roles updated successfully for user {}", username);
+
         return ResponseEntity.ok("User roles updated successfully");
 
     } catch (Exception e) {
-        log.error("❌ Update roles failed", e);
+        log.error("❌ Role update failed", e);
         return ResponseEntity.status(500).body(e.getMessage());
     }
 }

@@ -1171,21 +1171,32 @@ public void updateUserClientRoles(
         List<String> newRoleNames,
         String token) {
 
-    log.info("Updating roles {} for user '{}'", newRoleNames, username);
+    log.info("🚀 Updating roles {} for user '{}' in realm '{}' on client '{}'",
+            newRoleNames, username, realm, clientName);
 
     try {
+
         String userId = resolveUserId(realm, username, token);
+        log.info("🆔 Resolved userId = {}", userId);
+
         String clientUUID = getClientUUID(realm, clientName, token);
+        log.info("🧩 Resolved clientUUID = {}", clientUUID);
+
+        if (userId == null || clientUUID == null) {
+            throw new RuntimeException("UserId or ClientUUID resolution failed");
+        }
 
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
 
-        // 🔍 1. Get current roles
+        // 🔍 1. Fetch current roles
         String currentRolesUrl = config.getBaseUrl()
                 + "/admin/realms/" + realm
                 + "/users/" + userId
                 + "/role-mappings/clients/" + clientUUID;
+
+        log.info("🌐 Fetching current roles from {}", currentRolesUrl);
 
         ResponseEntity<List<Map<String, Object>>> currentResp =
                 restTemplate.exchange(
@@ -1198,11 +1209,13 @@ public void updateUserClientRoles(
         List<Map<String, Object>> currentRoles =
                 currentResp.getBody() == null ? new ArrayList<>() : currentResp.getBody();
 
-        log.info("Current roles = {}", currentRoles.stream()
-                .map(r -> r.get("name")).toList());
+        log.info("📋 Current roles: {}",
+                currentRoles.stream().map(r -> r.get("name")).toList());
 
-        // 🧹 2. Remove existing roles (if any)
+        // 🧹 2. Remove old roles
         if (!currentRoles.isEmpty()) {
+
+            log.info("🗑 Removing {} old roles", currentRoles.size());
 
             restTemplate.exchange(
                     currentRolesUrl,
@@ -1211,17 +1224,22 @@ public void updateUserClientRoles(
                     Void.class
             );
 
-            log.info("🗑 Old roles removed");
+            log.info("🗑 Old roles removed successfully");
+        } else {
+            log.info("ℹ No existing roles to remove");
         }
 
-        // ➕ 3. Fetch new role representations
+        // ➕ 3. Fetch role representations
         List<Map<String, Object>> newRoleReps = new ArrayList<>();
 
         for (String roleName : newRoleNames) {
+
             String roleUrl = config.getBaseUrl()
                     + "/admin/realms/" + realm
                     + "/clients/" + clientUUID
                     + "/roles/" + roleName;
+
+            log.info("📥 Fetching role '{}' from {}", roleName, roleUrl);
 
             ResponseEntity<Map<String, Object>> roleResp =
                     restTemplate.exchange(
@@ -1231,8 +1249,12 @@ public void updateUserClientRoles(
                             new ParameterizedTypeReference<>() {}
                     );
 
+            log.info("✅ Role '{}' loaded", roleName);
+
             newRoleReps.add(roleResp.getBody());
         }
+
+        log.info("➕ Assigning {} new roles", newRoleReps.size());
 
         // ➕ 4. Assign new roles
         restTemplate.exchange(
@@ -1242,9 +1264,16 @@ public void updateUserClientRoles(
                 Void.class
         );
 
-        log.info("✅ Roles updated successfully");
+        log.info("🎉 Roles updated successfully for user {}", username);
+
+    } catch (HttpClientErrorException e) {
+
+        log.error("❌ HTTP STATUS: {}", e.getStatusCode());
+        log.error("❌ RESPONSE BODY: {}", e.getResponseBodyAsString());
+        throw e;
 
     } catch (Exception e) {
+
         log.error("❌ Failed updating roles", e);
         throw new RuntimeException("Update roles failed: " + e.getMessage(), e);
     }
