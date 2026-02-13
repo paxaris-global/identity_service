@@ -699,7 +699,7 @@ public class KeycloakClientController {
     }
 
 //    -----------------------------------------update the user
-@PutMapping("/identity/users/{realm}/{userId}")
+@PutMapping("/identity/users/{realm}/{username}")
 public ResponseEntity<String> updateUser(
         @PathVariable String realm,
         @PathVariable String username,
@@ -710,14 +710,11 @@ public ResponseEntity<String> updateUser(
             ? authorizationHeader.substring(7)
             : authorizationHeader;
 
-    try {
-        clientService.updateUser(realm, username, token, userPayload);
-        return ResponseEntity.ok("User updated successfully");
-    } catch (Exception e) {
-        return ResponseEntity.status(500)
-                .body("Failed to update user: " + e.getMessage());
-    }
+    clientService.updateUser(realm, username, token, userPayload);
+
+    return ResponseEntity.ok("User updated successfully");
 }
+
 
 
 //--------------------update the user client role
