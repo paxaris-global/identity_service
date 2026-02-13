@@ -717,7 +717,7 @@ public ResponseEntity<String> updateUser(
 
 
 
-//--------------------update the user client role
+//--------------------update the user client roles
 @PutMapping("/identity/{realm}/users/{username}/clients/{clientName}/roles")
 public ResponseEntity<String> updateUserClientRoles(
         @PathVariable String realm,
