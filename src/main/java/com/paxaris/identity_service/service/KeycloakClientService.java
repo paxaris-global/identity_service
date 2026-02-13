@@ -101,9 +101,11 @@ void updateUserClientRoles(
         String realm,
         String username,
         String clientName,
-        List<String> newRoles,
+        String oldRole,
+        String newRole,
         String token
 );
+
 
 
 }

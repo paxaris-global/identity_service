@@ -722,40 +722,39 @@ public ResponseEntity<String> updateUser(
 
 
 //--------------------update the user client roles
-@PutMapping("/identity/{realm}/users/{username}/clients/{clientName}/roles")
+@PutMapping("/identity/{realm}/users/{username}/clients/{clientName}/roles/{oldRole}")
 public ResponseEntity<String> updateUserClientRoles(
         @PathVariable String realm,
         @PathVariable String username,
         @PathVariable String clientName,
-        @RequestBody List<String> newRoles) {
+        @PathVariable String oldRole,
+        @RequestBody Map<String, String> body) {
 
-    log.info("➡️ Role update request: realm={}, username={}, client={}",
-            realm, username, clientName);
+    String newRole = body.get("newRole");
 
-    log.info("📦 New roles received: {}", newRoles);
+    log.info("➡️ Role swap request: remove='{}', add='{}' for user {}",
+            oldRole, newRole, username);
 
     try {
         String masterToken = clientService.getMasterTokenInternally();
-
-        log.info("🔐 Master token acquired");
 
         clientService.updateUserClientRoles(
                 realm,
                 username,
                 clientName,
-                newRoles,
+                oldRole,
+                newRole,
                 masterToken
         );
 
-        log.info("✅ Roles updated successfully for user {}", username);
-
-        return ResponseEntity.ok("User roles updated successfully");
+        return ResponseEntity.ok("Role updated successfully");
 
     } catch (Exception e) {
         log.error("❌ Role update failed", e);
         return ResponseEntity.status(500).body(e.getMessage());
     }
 }
+
 
 
 
