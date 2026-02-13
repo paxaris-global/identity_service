@@ -710,10 +710,14 @@ public ResponseEntity<String> updateUser(
             ? authorizationHeader.substring(7)
             : authorizationHeader;
 
+    log.info("➡️ Update request received: realm={}, username={}", realm, username);
+    log.info("📦 Payload received: {}", userPayload);
+
     clientService.updateUser(realm, username, token, userPayload);
 
     return ResponseEntity.ok("User updated successfully");
 }
+
 
 
 

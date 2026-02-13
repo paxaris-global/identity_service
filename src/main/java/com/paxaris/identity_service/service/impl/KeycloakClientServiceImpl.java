@@ -673,21 +673,31 @@ public void updateUser(
         String token,
         Map<String, Object> userPayload) {
 
-    log.info("Updating user {} in realm {}", username, realm);
+    log.info("🚀 Updating user '{}' in realm '{}'", username, realm);
 
-    String userId = resolveUserId( realm,  username,  token);
+    String userId = resolveUserId(realm, username, token);
+
+    log.info("🆔 Resolved userId = {}", userId);
+
+    if (userId == null || userId.isBlank()) {
+        throw new RuntimeException("User ID could not be resolved for username: " + username);
+    }
+
+    String url = config.getBaseUrl()
+            + "/admin/realms/" + realm
+            + "/users/" + userId;
+
+    log.info("🌐 Calling identity update URL: {}", url);
+    log.info("📦 Sending payload: {}", userPayload);
+
+    HttpHeaders headers = new HttpHeaders();
+    headers.setBearerAuth(token);
+    headers.setContentType(MediaType.APPLICATION_JSON);
+
+    HttpEntity<Map<String, Object>> entity =
+            new HttpEntity<>(userPayload, headers);
 
     try {
-        String url = config.getBaseUrl()
-                + "/admin/realms/" + realm
-                + "/users/" + userId;
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(token);
-        headers.setContentType(MediaType.APPLICATION_JSON);
-
-        HttpEntity<Map<String, Object>> entity =
-                new HttpEntity<>(userPayload, headers);
 
         restTemplate.exchange(
                 url,
@@ -698,18 +708,18 @@ public void updateUser(
 
         log.info("✅ User updated successfully");
 
-    } catch (HttpClientErrorException.NotFound e) {
-        throw new RuntimeException("User not found: " + userId);
+    } catch (HttpClientErrorException e) {
 
-    } catch (HttpClientErrorException.Forbidden e) {
-        throw new RuntimeException("Not authorized to update user");
+        log.error("❌ HTTP STATUS: {}", e.getStatusCode());
+        log.error("❌ RESPONSE BODY: {}", e.getResponseBodyAsString());
+        throw e;
 
     } catch (Exception e) {
-        log.error("❌ Failed to update user", e);
+
+        log.error("❌ Unexpected failure", e);
         throw new RuntimeException("Update failed", e);
     }
 }
-
 
 
 
