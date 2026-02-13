@@ -1191,13 +1191,16 @@ public void updateUserClientRoles(
                 + "/users/" + userId
                 + "/role-mappings/clients/" + clientUUID;
 
-        // 🔍 Load OLD role rep (to delete)
+        // =====================
+        // ➖ REMOVE OLD ROLE
+        // =====================
+
         String oldRoleUrl = config.getBaseUrl()
                 + "/admin/realms/" + realm
                 + "/clients/" + clientUUID
                 + "/roles/" + oldRole;
 
-        log.info("➖ Loading role to remove '{}'", oldRole);
+        log.info("🗑 Removing role '{}'", oldRole);
 
         Map<String, Object> oldRoleRep =
                 restTemplate.exchange(
@@ -1207,7 +1210,6 @@ public void updateUserClientRoles(
                         new ParameterizedTypeReference<Map<String, Object>>() {}
                 ).getBody();
 
-        // ➖ Remove only that role
         restTemplate.exchange(
                 rolesUrl,
                 HttpMethod.DELETE,
@@ -1215,15 +1217,16 @@ public void updateUserClientRoles(
                 Void.class
         );
 
-        log.info("🗑 Role '{}' removed", oldRole);
+        // =====================
+        // ➕ ADD NEW ROLE
+        // =====================
 
-        // ➕ Load NEW role rep (to add)
         String newRoleUrl = config.getBaseUrl()
                 + "/admin/realms/" + realm
                 + "/clients/" + clientUUID
                 + "/roles/" + newRole;
 
-        log.info("➕ Loading role to add '{}'", newRole);
+        log.info("➕ Adding role '{}'", newRole);
 
         Map<String, Object> newRoleRep =
                 restTemplate.exchange(
@@ -1233,7 +1236,6 @@ public void updateUserClientRoles(
                         new ParameterizedTypeReference<Map<String, Object>>() {}
                 ).getBody();
 
-        // ➕ Assign new role
         restTemplate.exchange(
                 rolesUrl,
                 HttpMethod.POST,
@@ -1241,7 +1243,7 @@ public void updateUserClientRoles(
                 Void.class
         );
 
-        log.info("✅ Role swapped successfully");
+        log.info("✅ Role swapped successfully for user {}", username);
 
     } catch (HttpClientErrorException e) {
         log.error("❌ HTTP {} → {}", e.getStatusCode(), e.getResponseBodyAsString());
@@ -1251,6 +1253,7 @@ public void updateUserClientRoles(
         throw new RuntimeException(e);
     }
 }
+
 
 
 
