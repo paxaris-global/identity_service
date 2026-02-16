@@ -413,7 +413,7 @@ public class KeycloakClientController {
 
     // ------------------- CLIENT -------------------
     @PostMapping(
-            value = "/identity/{realm}/clients",
+            value = "{realm}/clients",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE
     )
     public ResponseEntity<SignupStatus> createClient(
