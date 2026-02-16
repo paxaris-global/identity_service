@@ -600,7 +600,7 @@ public class KeycloakClientController {
     }
 
     // ----------------------------------------------------------------------------------------------------------------------------------------------
-    @PutMapping("/identity/role/{realm}/{client}/{roleName}")
+    @PutMapping("role/{realm}/{client}/{roleName}")
     public ResponseEntity<String> updateRole(
             @PathVariable String realm,
             @PathVariable String client,
