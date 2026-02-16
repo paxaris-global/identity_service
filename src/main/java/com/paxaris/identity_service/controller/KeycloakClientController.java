@@ -257,40 +257,6 @@ public class KeycloakClientController {
         return valid ? ResponseEntity.ok("Token is valid") : ResponseEntity.badRequest().body("Token is invalid");
     }
 
-    // ------------------- SIGNUP -------------------
-    // @PostMapping(value = "/signup", consumes =
-    // MediaType.MULTIPART_FORM_DATA_VALUE)
-    // public ResponseEntity<?> signup(
-    // @RequestParam("data") String data,
-    // @RequestParam("sourceZip") MultipartFile sourceZip) {
-    // try {
-    // ObjectMapper objectMapper = new ObjectMapper();
-    // SignupRequest request = objectMapper.readValue(data, SignupRequest.class);
-    //
-    // com.paxaris.identity_service.dto.SignupStatus status =
-    // clientService.signup(request, sourceZip);
-    //
-    // if ("SUCCESS".equals(status.getStatus())) {
-    // return ResponseEntity.ok(status);
-    // } else {
-    // return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(status);
-    // }
-    // } catch (Exception e) {
-    // logger.error("Signup failed: {}", e.getMessage(), e);
-    // com.paxaris.identity_service.dto.SignupStatus errorStatus =
-    // com.paxaris.identity_service.dto.SignupStatus
-    // .builder()
-    // .status("FAILED")
-    // .message("Signup failed: " + e.getMessage())
-    // .steps(new java.util.ArrayList<>())
-    // .build();
-    // errorStatus.addStep("Signup Process", "FAILED", "Signup failed with
-    // exception", e.getMessage());
-    // return
-    // ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorStatus);
-    // }
-    // }
-
     @PostMapping(value = "/signup", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<SignupStatus> signup(@RequestBody SignupRequest request) {
 
@@ -332,42 +298,6 @@ public class KeycloakClientController {
         }
     }
 
-    // --------------------------------SIGNUP------------------------------------------
-//    @PostMapping(value = "/signup", consumes = MediaType.APPLICATION_JSON_VALUE)
-//    public ResponseEntity<SignupStatus> signup(@RequestBody SignupRequest request) {
-//
-//        try {
-//            SignupStatus status = clientService.signup(request);
-//            return ResponseEntity.ok(status);
-//
-//        } catch (IllegalArgumentException e) {
-//
-//            return ResponseEntity.badRequest().body(
-//                    SignupStatus.builder()
-//                            .status("FAILED")
-//                            .message(e.getMessage())
-//                            .steps(new ArrayList<>())
-//                            .build());
-//
-//        } catch (Exception e) {
-//
-//            SignupStatus errorStatus = SignupStatus.builder()
-//                    .status("FAILED")
-//                    .message("Provisioning failed: " + e.getMessage())
-//                    .steps(new ArrayList<>())
-//                    .build();
-//
-//            errorStatus.addStep(
-//                    "Signup",
-//                    "FAILED",
-//                    "Unexpected error",
-//                    e.getMessage());
-//
-//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-//                    .body(errorStatus);
-//        }
-//    }
-
     // ------------------- REALM
     // ----------------------------------------------------------------------------------------------------------------------------
     @PostMapping("/realm")
@@ -394,7 +324,7 @@ public class KeycloakClientController {
         }
     }
 
-    @GetMapping("/identity/realms/user")
+    @GetMapping("realms/user")
     public ResponseEntity<String> getUserRealms(
             @RequestHeader("Authorization") String authorizationHeader) {
         String token = authorizationHeader.startsWith("Bearer ") ? authorizationHeader.substring(7)
@@ -482,7 +412,7 @@ public class KeycloakClientController {
 
     // ---------------------------------get all clients
 
-    @GetMapping("/identity/clients/{realm}")
+    @GetMapping("clients/{realm}")
     public ResponseEntity<List<Map<String, Object>>> getAllClients(
             @PathVariable String realm,
             @RequestHeader("Authorization") String authorizationHeader) {
@@ -521,7 +451,7 @@ public class KeycloakClientController {
     // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     // ------------------- USER -------------------
-    @PostMapping("/identity/{realm}/users")
+    @PostMapping("{realm}/users")
     public ResponseEntity<String> createUser(
             @PathVariable String realm,
             @RequestHeader("Authorization") String authorizationHeader,
@@ -542,7 +472,7 @@ public class KeycloakClientController {
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------------------------
-    @GetMapping("identity/users/{realm}")
+    @GetMapping("users/{realm}")
     public ResponseEntity<List<Map<String, Object>>> getAllUsers(
             @PathVariable String realm,
             @RequestHeader("Authorization") String authorizationHeader) {
@@ -559,7 +489,7 @@ public class KeycloakClientController {
     }
 
     // ------------------- ROLE -------------------
-    @PostMapping("/identity/{realm}/clients/{clientName}/roles")
+    @PostMapping("{realm}/clients/{clientName}/roles")
     public ResponseEntity<String> createClientRoles(
             @PathVariable String realm,
             @PathVariable String clientName,
@@ -579,7 +509,7 @@ public class KeycloakClientController {
         }
     }
 
-    @GetMapping("/identity/{realm}/clients/{clientName}/roles")
+    @GetMapping("{realm}/clients/{clientName}/roles")
     public ResponseEntity<?> getClientRoles(
             @PathVariable String realm,
             @PathVariable String clientName,
@@ -676,7 +606,7 @@ public class KeycloakClientController {
 
 
     // ------------------- ASSIGN ROLE -------------------
-    @PostMapping("identity/{realm}/users/{username}/clients/{clientName}/roles")
+    @PostMapping("{realm}/users/{username}/clients/{clientName}/roles")
     public ResponseEntity<String> assignClientRoles(
             @PathVariable String realm,
             @PathVariable String username,
