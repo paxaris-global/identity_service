@@ -699,7 +699,7 @@ public class KeycloakClientController {
     }
 
 //    -----------------------------------------update the user
-@PutMapping("/identity/users/{realm}/{username}")
+@PutMapping("users/{realm}/{username}")
 public ResponseEntity<String> updateUser(
         @PathVariable String realm,
         @PathVariable String username,
