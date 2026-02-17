@@ -115,5 +115,12 @@ void updateUserClientRoles(
         );
 
 
+        void deleteUser(
+                String realm,
+                String username,
+                String token
+        );
+
+
 
 }

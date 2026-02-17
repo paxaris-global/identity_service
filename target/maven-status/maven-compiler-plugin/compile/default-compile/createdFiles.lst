@@ -29,6 +29,7 @@ com\paxaris\identity_service\service\impl\KeycloakClientServiceImpl$13.class
 com\paxaris\identity_service\exception\GlobalExceptionHandler.class
 com\paxaris\identity_service\service\impl\KeycloakClientServiceImpl$2.class
 com\paxaris\identity_service\controller\AuthController.class
+com\paxaris\identity_service\service\impl\KeycloakClientServiceImpl$16.class
 com\paxaris\identity_service\service\impl\KeycloakClientServiceImpl$1.class
 com\paxaris\identity_service\service\impl\KeycloakClientServiceImpl$7.class
 com\paxaris\identity_service\service\KeycloakService.class

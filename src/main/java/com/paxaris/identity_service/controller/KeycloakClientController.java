@@ -716,5 +716,28 @@ public ResponseEntity<String> deleteUserClientRole(
 }
 
 
+//----------------------delete user case
+    @DeleteMapping("users/{realm}/{username}")
+    public ResponseEntity<String> deleteUser(
+            @PathVariable String realm,
+            @PathVariable String username,
+            @RequestHeader("Authorization") String authorizationHeader) {
+
+        String token = authorizationHeader.startsWith("Bearer ")
+                ? authorizationHeader.substring(7)
+                : authorizationHeader;
+
+        log.info("🗑 Delete request received: realm={}, username={}", realm, username);
+
+        try {
+            clientService.deleteUser(realm, username, token);
+            return ResponseEntity.ok("User deleted successfully");
+
+        } catch (Exception e) {
+            log.error("❌ User delete failed", e);
+            return ResponseEntity.status(500).body(e.getMessage());
+        }
+    }
+
 
 }

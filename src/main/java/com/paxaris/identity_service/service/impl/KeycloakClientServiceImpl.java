@@ -646,6 +646,59 @@ public String createClient(
         }
     }
 
+//---------------------------user delete case
+    @Override
+    public void deleteUser(
+            String realm,
+            String username,
+            String token) {
+
+        log.info("🚀 Deleting user '{}' in realm '{}'", username, realm);
+
+        String userId = resolveUserId(realm, username, token);
+
+        log.info("🆔 Resolved userId = {}", userId);
+
+        if (userId == null || userId.isBlank()) {
+            throw new RuntimeException("User ID could not be resolved for username: " + username);
+        }
+
+        String url = config.getBaseUrl()
+                + "/admin/realms/" + realm
+                + "/users/" + userId;
+
+        log.info("🌐 Calling identity delete URL: {}", url);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+        try {
+
+            restTemplate.exchange(
+                    url,
+                    HttpMethod.DELETE,
+                    entity,
+                    Void.class
+            );
+
+            log.info("✅ User deleted successfully");
+
+        } catch (HttpClientErrorException e) {
+
+            log.error("❌ HTTP STATUS: {}", e.getStatusCode());
+            log.error("❌ RESPONSE BODY: {}", e.getResponseBodyAsString());
+            throw e;
+
+        } catch (Exception e) {
+
+            log.error("❌ Unexpected failure", e);
+            throw new RuntimeException("Delete failed", e);
+        }
+    }
+
+
     @Override
     public List<Map<String, Object>> getAllUsers(String realm, String token) {
         log.info("Attempting to fetch all users for realm '{}'", realm);
