@@ -89,15 +89,14 @@ public interface KeycloakClientService {
 //        update user
 
 
-        void updateUser(
-                String realm,
-                String username,
-                String token,
-                Map<String, Object> userPayload
-        );
+                void updateUser(
+                        String realm,
+                        String username,
+                        String token,
+                        Map<String, Object> userPayload
+                );
 
-
-        // ------------------------------updat theuser client role
+// ------------------------------updat theuser client role
 void updateUserClientRoles(
         String realm,
         String username,
