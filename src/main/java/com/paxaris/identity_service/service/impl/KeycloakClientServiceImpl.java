@@ -722,30 +722,42 @@ public String createClient(
 @Override
 public void updateUser(
         String realm,
-        String username,
+        String lookupUsername,
         String token,
         Map<String, Object> userPayload) {
 
-    log.info("🚀 Updating user '{}' in realm '{}'", username, realm);
+    log.info("🚀 Updating user '{}' in realm '{}'", lookupUsername, realm);
 
-    String userId = resolveUserId(realm, username, token);
-
-    log.info("🆔 Resolved userId = {}", userId);
+    // 🔑 Always resolve by old username (stable lookup)
+    String userId = resolveUserId(realm, lookupUsername, token);
 
     if (userId == null || userId.isBlank()) {
-        throw new RuntimeException("User ID could not be resolved for username: " + username);
+        throw new RuntimeException("User not found: " + lookupUsername);
     }
+
+    log.info("🆔 Resolved userId = {}", userId);
 
     String url = config.getBaseUrl()
             + "/admin/realms/" + realm
             + "/users/" + userId;
 
-    log.info("🌐 Calling identity update URL: {}", url);
-    log.info("📦 Sending payload: {}", userPayload);
-
     HttpHeaders headers = new HttpHeaders();
     headers.setBearerAuth(token);
     headers.setContentType(MediaType.APPLICATION_JSON);
+
+    /*
+     ✔ userPayload can now contain ANY Keycloak user field:
+
+     {
+       "username": "new.username",
+       "firstName": "John",
+       "lastName": "Doe",
+       "email": "john@company.com",
+       "enabled": true,
+       "emailVerified": true,
+       "attributes": { "department": ["IT"] }
+     }
+    */
 
     HttpEntity<Map<String, Object>> entity =
             new HttpEntity<>(userPayload, headers);
@@ -761,10 +773,16 @@ public void updateUser(
 
         log.info("✅ User updated successfully");
 
+    } catch (HttpClientErrorException.Conflict e) {
+
+        // username or email already exists
+        log.error("⚠️ Conflict: {}", e.getResponseBodyAsString());
+        throw new RuntimeException("Username or email already exists");
+
     } catch (HttpClientErrorException e) {
 
-        log.error("❌ HTTP STATUS: {}", e.getStatusCode());
-        log.error("❌ RESPONSE BODY: {}", e.getResponseBodyAsString());
+        log.error("❌ HTTP {}", e.getStatusCode());
+        log.error("❌ BODY {}", e.getResponseBodyAsString());
         throw e;
 
     } catch (Exception e) {

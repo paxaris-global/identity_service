@@ -640,8 +640,8 @@ public ResponseEntity<String> updateUser(
             ? authorizationHeader.substring(7)
             : authorizationHeader;
 
-    log.info("➡️ Update request received: realm={}, username={}", realm, username);
-    log.info("📦 Payload received: {}", userPayload);
+    log.info("➡️ Update request: realm={}, lookupUsername={}", realm, username);
+    log.info("📦 Update payload: {}", userPayload);
 
     clientService.updateUser(realm, username, token, userPayload);
 
