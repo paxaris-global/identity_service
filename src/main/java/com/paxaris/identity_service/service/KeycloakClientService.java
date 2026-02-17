@@ -106,6 +106,14 @@ void updateUserClientRoles(
         String token
 );
 
+        void deleteUserClientRole(
+                String realm,
+                String username,
+                String clientName,
+                String roleName,
+                String token
+        );
+
 
 
 }

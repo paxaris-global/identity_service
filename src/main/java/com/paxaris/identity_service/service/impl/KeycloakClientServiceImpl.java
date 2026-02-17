@@ -1448,6 +1448,74 @@ public void updateUserClientRoles(
         }
     }
 
+    @Override
+    public void deleteUserClientRole(
+            String realm,
+            String username,
+            String clientName,
+            String roleName,
+            String token) {
+
+        log.info("🎯 Removing role '{}' from user '{}'", roleName, username);
+
+        try {
+
+            String userId = resolveUserId(realm, username, token);
+            String clientUUID = getClientUUID(realm, clientName, token);
+
+            log.info("🆔 userId={}, 🧩 clientUUID={}", userId, clientUUID);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setBearerAuth(token);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            String rolesUrl = config.getBaseUrl()
+                    + "/admin/realms/" + realm
+                    + "/users/" + userId
+                    + "/role-mappings/clients/" + clientUUID;
+
+            // =====================
+            // ➖ FETCH ROLE
+            // =====================
+
+            String roleUrl = config.getBaseUrl()
+                    + "/admin/realms/" + realm
+                    + "/clients/" + clientUUID
+                    + "/roles/" + roleName;
+
+            log.info("🔍 Fetching role '{}'", roleName);
+
+            Map<String, Object> roleRep =
+                    restTemplate.exchange(
+                            roleUrl,
+                            HttpMethod.GET,
+                            new HttpEntity<>(headers),
+                            new ParameterizedTypeReference<Map<String, Object>>() {}
+                    ).getBody();
+
+            // =====================
+            // 🗑 DELETE ROLE MAPPING
+            // =====================
+
+            restTemplate.exchange(
+                    rolesUrl,
+                    HttpMethod.DELETE,
+                    new HttpEntity<>(List.of(roleRep), headers),
+                    Void.class
+            );
+
+            log.info("✅ Role '{}' removed successfully for user {}", roleName, username);
+
+        } catch (HttpClientErrorException e) {
+            log.error("❌ HTTP {} → {}", e.getStatusCode(), e.getResponseBodyAsString());
+            throw e;
+        } catch (Exception e) {
+            log.error("❌ Role delete failed", e);
+            throw new RuntimeException(e);
+        }
+    }
+
+
     // ------------------SIGNUP end---------------------------
     // ------------------SIGNUP end---------------------------
 

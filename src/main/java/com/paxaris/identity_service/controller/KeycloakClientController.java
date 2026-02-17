@@ -686,10 +686,35 @@ public ResponseEntity<String> updateUserClientRoles(
 }
 
 
+//-----------------------------delete role from the user client
+@DeleteMapping("{realm}/users/{username}/clients/{clientName}/roles/{roleName}")
+public ResponseEntity<String> deleteUserClientRole(
+        @PathVariable String realm,
+        @PathVariable String username,
+        @PathVariable String clientName,
+        @PathVariable String roleName) {
 
+    log.info("🗑 Delete role request: '{}' for user {}", roleName, username);
 
-//    resolve admin token problem
-//    String masterToken = clientService.getMasterTokenInternally();
+    try {
+        String masterToken = clientService.getMasterTokenInternally();
+
+        clientService.deleteUserClientRole(
+                realm,
+                username,
+                clientName,
+                roleName,
+                masterToken
+        );
+
+        return ResponseEntity.ok("Role deleted successfully");
+
+    } catch (Exception e) {
+        log.error("❌ Role delete failed", e);
+        return ResponseEntity.status(500).body(e.getMessage());
+    }
+}
+
 
 
 }
