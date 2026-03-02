@@ -323,47 +323,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
     }
 
     // ---------------- CLIENT ----------------
-//    @Override
-//    public String createClient(String realm, String clientId, boolean isPublicClient, String token) {
-//        // Correct Keycloak admin URL
-//        String url = config.getBaseUrl() + "/admin/realms/" + realm + "/clients";
-//
-//        // Build request body
-//        Map<String, Object> body = new HashMap<>();
-//        body.put("clientId", clientId);
-//        body.put("enabled", true);
-//        body.put("protocol", "openid-connect");
-//        body.put("publicClient", isPublicClient);
-//        body.put("standardFlowEnabled", true);
-//        body.put("directAccessGrantsEnabled", true);
-////        body.put("authorizationServicesEnabled", true);
-//
-//        if (isPublicClient) {
-//            body.put("clientAuthenticatorType", "client-id");
-//            body.put("redirectUris", Collections.singletonList("*"));
-//            body.put("serviceAccountsEnabled", false);
-//        } else {
-//            body.put("clientAuthenticatorType", "client-secret");
-//            body.put("serviceAccountsEnabled", true);
-//        }
-//
-//        // Set headers
-//        HttpHeaders headers = new HttpHeaders();
-//        headers.setContentType(MediaType.APPLICATION_JSON);
-//        headers.setBearerAuth(token);
-//
-//        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
-//
-//        // Make REST call to Keycloaks
-//        ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
-//
-//        if (!response.getStatusCode().is2xxSuccessful()) {
-//            throw new RuntimeException("Failed to create client with status code: " + response.getStatusCode());
-//        }
-//
-//        // Return the client UUID
-//        return getClientUUID(realm, clientId, token);
-//    }
+
 private void ensureClientSecret(String realm, String clientUUID, String token) {
 
     String url = config.getBaseUrl()
@@ -386,22 +346,170 @@ private void ensureClientSecret(String realm, String clientUUID, String token) {
     }
 }
 
+//@Override
+//public String createClient(
+//        String realm,
+//        String clientId,
+//        boolean isPublicClient,
+//        String adminToken,
+//        MultipartFile sourceZip,
+//        SignupStatus status,
+//        String ownerUsername) {
+//
+//    Path extractedCodePath = null;
+//
+//    try {
+//
+//        // ====================================================
+//        // Step 1 — Create Keycloak Client (ADMIN TOKEN ONLY)
+//        // ====================================================
+//        status.addStep("Create Client", "IN_PROGRESS", "Creating Keycloak client");
+//
+//        String url = config.getBaseUrl() + "/admin/realms/" + realm + "/clients";
+//
+//        Map<String, Object> body = new HashMap<>();
+//        body.put("clientId", clientId);
+//        body.put("enabled", true);
+//        body.put("protocol", "openid-connect");
+//
+//        if (isPublicClient) {
+//
+//            // 🌍 PUBLIC FRONTEND CLIENT
+//            body.put("publicClient", true);
+//            body.put("standardFlowEnabled", true);
+//            body.put("directAccessGrantsEnabled", false);
+//            body.put("serviceAccountsEnabled", false);
+//            body.put("redirectUris", List.of("*"));
+//
+//        } else {
+//
+//            // 🔐 CONFIDENTIAL BACKEND CLIENT
+//            body.put("publicClient", false);
+//            body.put("clientAuthenticatorType", "client-secret");
+//            body.put("serviceAccountsEnabled", true);
+//            body.put("directAccessGrantsEnabled", true);
+//
+//            body.put("standardFlowEnabled", false);
+//            body.put("implicitFlowEnabled", false);
+//            body.put("bearerOnly", false);
+//        }
+//
+//        HttpHeaders headers = new HttpHeaders();
+//        headers.setContentType(MediaType.APPLICATION_JSON);
+//        headers.setBearerAuth(adminToken);
+//
+//        restTemplate.exchange(
+//                url,
+//                HttpMethod.POST,
+//                new HttpEntity<>(body, headers),
+//                Void.class
+//        );
+//
+//        String clientUUID = getClientUUID(realm, clientId, adminToken);
+//
+//        // 🔑 ENSURE SECRET EXISTS FOR CONFIDENTIAL CLIENT
+//        if (!isPublicClient) {
+//            ensureClientSecret(realm, clientUUID, adminToken);
+//        }
+//
+//        status.addStep(
+//                "Create Client",
+//                "SUCCESS",
+//                "Client created: " + clientUUID
+//        );
+//        // ====================================================
+//        // Step 2 — Extract ZIP
+//        // ====================================================
+//        status.addStep("Extract Application Code", "IN_PROGRESS", "Extracting ZIP");
+//
+//        extractedCodePath = Files.createTempDirectory("signup-extract-");
+//        extractZipFile(sourceZip, extractedCodePath);
+//
+//        status.addStep("Extract Application Code", "SUCCESS", "ZIP extracted");
+//
+//        // ====================================================
+//        // Step 3 — Generate Repo Name
+//        // ====================================================
+//        String repoName = ProvisioningService.generateRepositoryName(
+//                realm,
+//                ownerUsername,
+//                clientId
+//        );
+//
+//        status.addStep("Generate Repository Name", "SUCCESS",
+//                repoName);
+//
+//        // ====================================================
+//        // Step 4 — Create GitHub Repository
+//        // ====================================================
+//        status.addStep("Create GitHub Repository", "IN_PROGRESS",
+//                "Creating " + repoName);
+//
+//        provisioningService.createRepo(repoName);
+//
+//        status.addStep("Create GitHub Repository", "SUCCESS",
+//                "Repository created");
+//
+//        // ====================================================
+//        // Step 5 — Upload Code
+//        // ====================================================
+//        status.addStep("Upload Code to GitHub", "IN_PROGRESS",
+//                "Uploading code");
+//
+//        uploadDirectoryToGitHub(extractedCodePath, repoName);
+//
+//        status.addStep("Upload Code to GitHub", "SUCCESS",
+//                "Code uploaded");
+//
+//        // ====================================================
+//        // Cleanup
+//        // ====================================================
+//        cleanupDirectory(extractedCodePath);
+//
+//        status.setStatus("SUCCESS");
+//        status.setMessage("Provisioning completed successfully");
+//
+//        return clientUUID;
+//
+//    } catch (Exception e) {
+//
+//        status.setStatus("FAILED");
+//        status.setMessage(e.getMessage());
+//
+//        if (!status.getSteps().isEmpty()) {
+//            SignupStatus.StepStatus last =
+//                    status.getSteps().get(status.getSteps().size() - 1);
+//
+//            if ("IN_PROGRESS".equals(last.getStatus())) {
+//                last.setStatus("FAILED");
+//                last.setError(e.getMessage());
+//            }
+//        }
+//
+//        cleanupDirectory(extractedCodePath);
+//
+//        throw new RuntimeException("Client provisioning failed", e);
+//    }
+//}
 @Override
 public String createClient(
         String realm,
         String clientId,
         boolean isPublicClient,
         String adminToken,
-        MultipartFile sourceZip,
+        MultipartFile backendZip,
+        MultipartFile frontendZip,
+        String frontendBaseUrl,
         SignupStatus status,
         String ownerUsername) {
 
-    Path extractedCodePath = null;
+    Path backendPath = null;
+    Path frontendPath = null;
 
     try {
 
         // ====================================================
-        // Step 1 — Create Keycloak Client (ADMIN TOKEN ONLY)
+        // Step 1 — Create Keycloak Client
         // ====================================================
         status.addStep("Create Client", "IN_PROGRESS", "Creating Keycloak client");
 
@@ -416,10 +524,20 @@ public String createClient(
 
             // 🌍 PUBLIC FRONTEND CLIENT
             body.put("publicClient", true);
-            body.put("standardFlowEnabled", true);          // browser login
+            body.put("standardFlowEnabled", true);
             body.put("directAccessGrantsEnabled", false);
             body.put("serviceAccountsEnabled", false);
-            body.put("redirectUris", List.of("*"));
+            body.put("implicitFlowEnabled", false);
+
+            // 🔥 IMPORTANT — Redirect Configuration
+            body.put("redirectUris", List.of(frontendBaseUrl + "/*"));
+            body.put("webOrigins", List.of(frontendBaseUrl));
+            body.put("rootUrl", frontendBaseUrl);
+            body.put("baseUrl", frontendBaseUrl);
+
+            body.put("attributes", Map.of(
+                    "post.logout.redirect.uris", frontendBaseUrl + "/*"
+            ));
 
         } else {
 
@@ -427,8 +545,7 @@ public String createClient(
             body.put("publicClient", false);
             body.put("clientAuthenticatorType", "client-secret");
             body.put("serviceAccountsEnabled", true);
-            body.put("directAccessGrantsEnabled", true);
-
+            body.put("directAccessGrantsEnabled", false);
             body.put("standardFlowEnabled", false);
             body.put("implicitFlowEnabled", false);
             body.put("bearerOnly", false);
@@ -447,64 +564,66 @@ public String createClient(
 
         String clientUUID = getClientUUID(realm, clientId, adminToken);
 
-        // 🔑 ENSURE SECRET EXISTS FOR CONFIDENTIAL CLIENT
         if (!isPublicClient) {
             ensureClientSecret(realm, clientUUID, adminToken);
         }
 
-        status.addStep(
-                "Create Client",
-                "SUCCESS",
-                "Client created: " + clientUUID
-        );
-        // ====================================================
-        // Step 2 — Extract ZIP
-        // ====================================================
-        status.addStep("Extract Application Code", "IN_PROGRESS", "Extracting ZIP");
-
-        extractedCodePath = Files.createTempDirectory("signup-extract-");
-        extractZipFile(sourceZip, extractedCodePath);
-
-        status.addStep("Extract Application Code", "SUCCESS", "ZIP extracted");
+        status.addStep("Create Client", "SUCCESS", "Client created: " + clientUUID);
 
         // ====================================================
-        // Step 3 — Generate Repo Name
+        // Step 2 — Extract Backend & Frontend ZIPs
         // ====================================================
-        String repoName = ProvisioningService.generateRepositoryName(
-                realm,
-                ownerUsername,
-                clientId
-        );
+        status.addStep("Extract Application Code", "IN_PROGRESS", "Extracting ZIP files");
 
-        status.addStep("Generate Repository Name", "SUCCESS",
-                repoName);
+        backendPath = Files.createTempDirectory("backend-extract-");
+        frontendPath = Files.createTempDirectory("frontend-extract-");
+
+        extractZipFile(backendZip, backendPath);
+        extractZipFile(frontendZip, frontendPath);
+
+        status.addStep("Extract Application Code", "SUCCESS", "ZIP files extracted");
 
         // ====================================================
-        // Step 4 — Create GitHub Repository
+        // Step 3 — Generate Repository Names
         // ====================================================
-        status.addStep("Create GitHub Repository", "IN_PROGRESS",
-                "Creating " + repoName);
+        String backendRepo = ProvisioningService.generateRepositoryName(
+                realm, ownerUsername, clientId + "-backend");
 
-        provisioningService.createRepo(repoName);
+        String frontendRepo = ProvisioningService.generateRepositoryName(
+                realm, ownerUsername, clientId + "-frontend");
 
-        status.addStep("Create GitHub Repository", "SUCCESS",
-                "Repository created");
+        status.addStep("Generate Repository Names", "SUCCESS",
+                backendRepo + " & " + frontendRepo);
+
+        // ====================================================
+        // Step 4 — Create GitHub Repositories
+        // ====================================================
+        status.addStep("Create GitHub Repositories", "IN_PROGRESS",
+                "Creating repositories");
+
+        provisioningService.createRepo(backendRepo);
+        provisioningService.createRepo(frontendRepo);
+
+        status.addStep("Create GitHub Repositories", "SUCCESS",
+                "Repositories created");
 
         // ====================================================
         // Step 5 — Upload Code
         // ====================================================
         status.addStep("Upload Code to GitHub", "IN_PROGRESS",
-                "Uploading code");
+                "Uploading backend and frontend code");
 
-        uploadDirectoryToGitHub(extractedCodePath, repoName);
+        uploadDirectoryToGitHub(backendPath, backendRepo);
+        uploadDirectoryToGitHub(frontendPath, frontendRepo);
 
         status.addStep("Upload Code to GitHub", "SUCCESS",
-                "Code uploaded");
+                "Code uploaded successfully");
 
         // ====================================================
         // Cleanup
         // ====================================================
-        cleanupDirectory(extractedCodePath);
+        cleanupDirectory(backendPath);
+        cleanupDirectory(frontendPath);
 
         status.setStatus("SUCCESS");
         status.setMessage("Provisioning completed successfully");
@@ -526,7 +645,8 @@ public String createClient(
             }
         }
 
-        cleanupDirectory(extractedCodePath);
+        cleanupDirectory(backendPath);
+        cleanupDirectory(frontendPath);
 
         throw new RuntimeException("Client provisioning failed", e);
     }
@@ -773,10 +893,6 @@ public void updateUser(
         throw new RuntimeException("Update failed", e);
     }
 }
-
-
-
-
 
     // ---------------- ROLE ----------------
     @Override
@@ -1307,12 +1423,6 @@ public void updateUserClientRoles(
     }
 }
 
-
-
-
-
-
-
     // ------------------SIGNUP---------------------------
 
     public String createClients(String realm, String clientId, boolean isPublicClient, String token) {
@@ -1706,30 +1816,7 @@ public void updateUserClientRoles(
         }
     }
 
-    private String getClientRoleId(String realm, String clientUUID, String roleName, String token) {
-        log.info("Fetching client role ID for role '{}' on client UUID '{}'", roleName, clientUUID);
-        String url = config.getBaseUrl() + "/admin/realms/" + realm + "/clients/" + clientUUID + "/roles";
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(token);
-
-        try {
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers),
-                    String.class);
-            List<Map<String, Object>> roles = objectMapper.readValue(response.getBody(), new TypeReference<>() {
-            });
-            String roleId = roles.stream()
-                    .filter(r -> r.get("name").equals(roleName))
-                    .map(r -> (String) r.get("id"))
-                    .findFirst()
-                    .orElseThrow(() -> new RuntimeException("Role not found: " + roleName));
-            log.info("Fetched role ID: '{}' for role name '{}'", roleId, roleName);
-            return roleId;
-        } catch (Exception e) {
-            log.error("Failed to fetch client roles for client UUID '{}': {}", clientUUID, e.getMessage(), e);
-            throw new RuntimeException("Failed to fetch client roles", e);
-        }
-    }
-
+    
     private void assignRealmManagementRoleToUser(String realm, String userId, String roleName, String token) {
         log.info("Assigning realm management role '{}' to user ID '{}'", roleName, userId);
         String clientId = getRealmManagementClientId(realm, token);

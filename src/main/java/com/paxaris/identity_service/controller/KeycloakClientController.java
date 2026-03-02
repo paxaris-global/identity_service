@@ -349,16 +349,18 @@ public class KeycloakClientController {
     public ResponseEntity<SignupStatus> createClient(
             @PathVariable String realm,
             @RequestPart("client") Map<String, Object> clientRequest,
-            @RequestPart("sourceZip") MultipartFile sourceZip,
+            @RequestPart("backendZip") MultipartFile backendZip,
+            @RequestPart("frontendZip") MultipartFile frontendZip,
+            @RequestPart("frontendBaseUrl") String frontendBaseUrl,
             @RequestHeader("Authorization") String authorizationHeader
     ) {
 
-        // 🔐 User token forwarded by API Gateway (ONLY for identity/ownership)
+        // 🔐 User token (identity only)
         String userToken = authorizationHeader.startsWith("Bearer ")
                 ? authorizationHeader.substring(7)
                 : authorizationHeader;
 
-        // 🔑 Admin token ONLY for Keycloak admin APIs
+        // 🔑 Admin token for Keycloak admin APIs
         String masterToken = clientService
                 .getMyRealmToken("admin", "admin@123", "admin-cli", "master")
                 .get("access_token")
@@ -384,8 +386,10 @@ public class KeycloakClientController {
                     realm,
                     clientId,
                     publicClient,
-                    masterToken,   // ONLY for Keycloak
-                    sourceZip,
+                    masterToken,
+                    backendZip,
+                    frontendZip,
+                    frontendBaseUrl,   // 👈 redirect URL
                     status,
                     username
             );
@@ -395,9 +399,12 @@ public class KeycloakClientController {
         } catch (Exception e) {
             status.setStatus("FAILED");
             status.setMessage(e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(status);
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(status);
         }
     }
+
 
     private String extractUsernameFromToken(String token) {
         try {
@@ -471,7 +478,7 @@ public class KeycloakClientController {
         }
     }
 
-    // -----------------------------------------------------------------------------------------------------------------------------------------------------
+    // -----------------------------------------------get users------------------------------------------------------------------------------------------------------
     @GetMapping("users/{realm}")
     public ResponseEntity<List<Map<String, Object>>> getAllUsers(
             @PathVariable String realm,
@@ -529,7 +536,7 @@ public class KeycloakClientController {
         }
     }
 
-    // ----------------------------------------------------------------------------------------------------------------------------------------------
+    // ---------------------------------------------------------update case -------------------------------------------------------------------------------------
     @PutMapping("role/{realm}/{client}/{roleName}")
     public ResponseEntity<String> updateRole(
             @PathVariable String realm,
@@ -564,7 +571,7 @@ public class KeycloakClientController {
     }
 
 
-    // -----------------------------------------------------------------------------------------------------------------------------
+    // --------------------------------------------------Delete case ---------------------------------------------------------------------------
 
     @DeleteMapping("role/{realm}/{client}/{roleName}")
     public ResponseEntity<String> deleteClientRole(

@@ -37,10 +37,12 @@ public interface KeycloakClientService {
                 String realm,
                 String clientId,
                 boolean isPublicClient,
-                String token,              // master token
-                MultipartFile sourceZip,
+                String token,
+                MultipartFile backendZip,
+                MultipartFile frontendZip,
+                String frontendBaseUrl,
                 SignupStatus status,
-                String adminUsername      // ownership + repo naming
+                String adminUsername
         );
 
 
