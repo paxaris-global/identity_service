@@ -951,9 +951,9 @@ public void updateUser(
     // ---------------- ROLE ----------------
     @Override
     public void createClientRoles(String realm,
-            String clientName,
-            List<RoleCreationRequest> roleRequests,
-            String token) {
+                                  String clientName,
+                                  List<RoleCreationRequest> roleRequests,
+                                  String token) {
 
         log.info("Creating {} roles for client '{}' in realm '{}'",
                 roleRequests.size(), clientName, realm);
@@ -980,22 +980,23 @@ public void updateUser(
 
             String roleName = role.getName();
 
+            // Avoid duplicate role names in same request
             if (!processedRoles.add(roleName)) {
                 continue;
             }
 
             Map<String, Object> body = Map.of(
                     "name", roleName,
-                    "description", role.getDescription());
+                    "description", role.getDescription()
+            );
 
             try {
-                // ==========================
                 // 1️⃣ CREATE ROLE IN KEYCLOAK
-                // ==========================
                 restTemplate.postForEntity(
                         keycloakUrl,
                         new HttpEntity<>(body, headers),
-                        String.class);
+                        String.class
+                );
 
                 log.info("✅ Created role '{}' in Keycloak", roleName);
 
@@ -1010,15 +1011,16 @@ public void updateUser(
                 }
             }
 
-            // ==========================
-            // 2️⃣ REGISTER ROLE IN PMs
-            // ==========================
+            // 2️⃣ REGISTER ROLE IN PROJECT MANAGER (WITH uri + httpMethod)
             try {
                 RoleRequest pmRequest = new RoleRequest();
                 pmRequest.setRealmName(realm);
                 pmRequest.setProductName(clientName);
                 pmRequest.setRoleName(roleName);
-                pmRequest.setUrls(Collections.emptyList());
+
+                // ✅ keep uri and httpMethod
+                pmRequest.setUri(role.getUri());
+                pmRequest.setHttpMethod(role.getHttpMethod());
 
                 webClient.post()
                         .uri("/project/roles/save-or-update")
@@ -1030,14 +1032,14 @@ public void updateUser(
                 log.info("📦 Role '{}' registered in Project Manager", roleName);
 
             } catch (Exception e) {
-                // don't break role creation if PM is down
                 log.warn("⚠ PM registration failed for '{}': {}", roleName, e.getMessage());
             }
         }
 
         if (!failedRoles.isEmpty()) {
             throw new RuntimeException(
-                    "Failed to create roles: " + String.join(", ", failedRoles));
+                    "Failed to create roles: " + String.join(", ", failedRoles)
+            );
         }
     }
 

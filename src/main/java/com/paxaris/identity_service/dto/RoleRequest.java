@@ -16,5 +16,5 @@ public class RoleRequest {
     private String realmName;
     private String productName;
     private String roleName;
-    private List<UrlEntry> urls;
+//    private List<UrlEntry> urls;
 }
