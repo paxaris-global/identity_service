@@ -26,6 +26,7 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.http.HttpMethod;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
@@ -36,6 +37,7 @@ import java.util.*;
 @RequiredArgsConstructor
 @Slf4j
 public class KeycloakClientController {
+
 
     private final RestTemplate restTemplate = new RestTemplate();
     private final DynamicJwtDecoder jwtDecoder;
@@ -132,6 +134,9 @@ public class KeycloakClientController {
                 }
             }
 
+//            fetch the redirect url from  keycloak and add it to the response
+            String redirectUrl = clientService.getClientRedirectUrl(realm, clientId);
+
             // Merge roles
             List<String> allRoles = new ArrayList<>(realmRoles); // (changed)
             allRoles.addAll(clientRoles); // (changed)
@@ -170,7 +175,6 @@ public class KeycloakClientController {
                     .body(Map.of("error", "Login failed", "message", e.getMessage()));
         }
     }
-
     @GetMapping("/validate")
     public ResponseEntity<Map<String, Object>> validateToken(
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader) {

@@ -172,6 +172,59 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
         }
     }
 
+    //get the redirect url
+    public String getClientRedirectUrl(String realm, String clientId) {
+
+        String adminToken = getMasterToken();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(adminToken);
+        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+
+        HttpEntity<Void> request = new HttpEntity<>(headers);
+
+        // Step 1: Get client UUID
+        String clientSearchUrl = config.getBaseUrl()
+                + "/admin/realms/" + realm
+                + "/clients?clientId=" + clientId;
+
+        ResponseEntity<List> searchResponse = restTemplate.exchange(
+                clientSearchUrl,
+                HttpMethod.GET,
+                request,
+                List.class
+        );
+
+        List<?> clients = searchResponse.getBody();
+        if (clients == null || clients.isEmpty()) {
+            throw new RuntimeException("Client not found in Keycloak");
+        }
+
+        Map<String, Object> client = (Map<String, Object>) clients.get(0);
+        String clientUuid = client.get("id").toString();
+
+        // Step 2: Get full client details
+        String clientDetailsUrl = config.getBaseUrl()
+                + "/admin/realms/" + realm
+                + "/clients/" + clientUuid;
+
+        ResponseEntity<Map> clientResponse = restTemplate.exchange(
+                clientDetailsUrl,
+                HttpMethod.GET,
+                request,
+                Map.class
+        );
+
+        Map<String, Object> clientDetails = clientResponse.getBody();
+
+        List<String> redirectUris = (List<String>) clientDetails.get("redirectUris");
+
+        return (redirectUris != null && !redirectUris.isEmpty())
+                ? redirectUris.get(0)
+                : null;
+    }
+
+
     private String getClientSecretFromKeycloak(String realm, String clientId) {
         log.info("Fetching client secret for client '{}' in realm '{}'", clientId, realm);
 
