@@ -164,6 +164,7 @@ public class KeycloakClientController {
             response.put("roles", allRoles); // (changed)
             response.put("realm", extractedRealm); // (changed)
             response.put("product", product); // (changed)
+            response.put("redirect_url", redirectUrl);
 
             logger.info("✅ Returning login response with roles/realm/product"); // (changeds)
 

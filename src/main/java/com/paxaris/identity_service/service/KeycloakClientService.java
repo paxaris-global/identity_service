@@ -17,6 +17,9 @@ public interface KeycloakClientService {
         // Token operations
         Map<String, Object> getMyRealmToken(String username, String password, String clientId, String realm);
 
+        // Client redirect URL
+        String getClientRedirectUrl(String realm, String clientId);
+
         boolean validateToken(String realm, String token);
 
         Map<String, Object> getRealmToken(String realm,

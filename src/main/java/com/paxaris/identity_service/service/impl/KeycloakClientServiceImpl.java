@@ -173,6 +173,7 @@ public class KeycloakClientServiceImpl implements KeycloakClientService {
     }
 
     //get the redirect url
+    @Override
     public String getClientRedirectUrl(String realm, String clientId) {
 
         String adminToken = getMasterToken();
