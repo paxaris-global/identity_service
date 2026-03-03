@@ -4,6 +4,7 @@ import com.paxaris.identity_service.dto.RoleCreationRequest;
 import com.paxaris.identity_service.dto.RoleRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
@@ -15,6 +16,9 @@ import org.springframework.web.client.RestTemplate;
 public class CrudKeycloakApiController {
 
     private final RestTemplate restTemplate = new RestTemplate();
+
+    @Value("${project.management.base-url}")
+    private String projectManagementBaseUrl;
 
     // ---------------- CREATE ROLE ----------------
     @PostMapping("/roles/{realm}/{client}")
@@ -47,7 +51,7 @@ public class CrudKeycloakApiController {
 
             // 2️⃣ Only if Keycloak succeeded, call Project Manager
             if (keycloakResponse.getStatusCode().is2xxSuccessful()) {
-                String projectManagerUrl = "http://localhost:8088/project/roles/save-or-update";
+                String projectManagerUrl = projectManagementBaseUrl + "/project/roles/save-or-update";
                 log.info("Calling Project Manager CREATE/UPDATE ROLE at: {}", projectManagerUrl);
 
                 ResponseEntity<String> pmResponse = restTemplate.postForEntity(
@@ -101,7 +105,7 @@ public class CrudKeycloakApiController {
             log.info("Keycloak response: {}", keycloakResponse.getStatusCode());
 
             if (keycloakResponse.getStatusCode().is2xxSuccessful()) {
-                String projectManagerUrl = "http://localhost:8088/project/roles/save-or-update";
+                String projectManagerUrl = projectManagementBaseUrl + "/project/roles/save-or-update";
                 log.info("Calling Project Manager CREATE/UPDATE ROLE at: {}", projectManagerUrl);
 
                 ResponseEntity<String> pmResponse = restTemplate.postForEntity(
@@ -149,7 +153,7 @@ public class CrudKeycloakApiController {
             log.info("Keycloak response: {}", keycloakResponse.getStatusCode());
 
             if (keycloakResponse.getStatusCode().is2xxSuccessful()) {
-                String projectManagerUrl = "http://localhost:8088/project/roles/" + id;
+                String projectManagerUrl = projectManagementBaseUrl + "/project/roles/" + id;
                 log.info("Calling Project Manager DELETE ROLE at: {}", projectManagerUrl);
 
                 ResponseEntity<String> pmResponse = restTemplate.exchange(
