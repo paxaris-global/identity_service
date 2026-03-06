@@ -7,6 +7,7 @@ D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\controller\AuthController.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\controller\CrudKeycloakApiController.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\controller\KeycloakClientController.java
+D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\controller\KeycloakProductController.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\dto\AssignRoleRequest.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\dto\KeycloakConfig.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\dto\RoleCreationRequest.java
@@ -19,5 +20,6 @@ D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\service\DynamicJwtDecoder.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\service\impl\KeycloakClientServiceImpl.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\service\KeycloakClientService.java
+D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\service\KeycloakProductService.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\service\KeycloakService.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\service\ProvisioningService.java

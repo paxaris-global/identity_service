@@ -6,6 +6,7 @@ com\paxaris\identity_service\dto\AssignRoleRequest.class
 com\paxaris\identity_service\dto\RoleCreationRequest.class
 com\paxaris\identity_service\config\KeycloakRealmAndClientRoleConverter.class
 com\paxaris\identity_service\service\impl\KeycloakClientServiceImpl$8.class
+com\paxaris\identity_service\controller\KeycloakProductController.class
 com\paxaris\identity_service\dto\SignupStatus.class
 com\paxaris\identity_service\service\impl\KeycloakClientServiceImpl$10.class
 com\paxaris\identity_service\dto\SignupStatus$StepStatus.class
@@ -15,6 +16,7 @@ com\paxaris\identity_service\service\impl\KeycloakClientServiceImpl$3.class
 com\paxaris\identity_service\controller\KeycloakClientController.class
 com\paxaris\identity_service\service\impl\KeycloakClientServiceImpl$15.class
 com\paxaris\identity_service\service\DynamicJwtDecoder.class
+com\paxaris\identity_service\service\KeycloakProductService.class
 com\paxaris\identity_service\config\JwtDecoderConfig.class
 com\paxaris\identity_service\config\SecurityConfig.class
 com\paxaris\identity_service\config\WebClientConfig.class
