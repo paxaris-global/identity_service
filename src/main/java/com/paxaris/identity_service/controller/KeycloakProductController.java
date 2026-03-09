@@ -604,7 +604,7 @@ public class KeycloakProductController {
 
 
     // ------------------- ASSIGN ROLE -------------------
-    @PostMapping("{realm}/users/{username}/products/{productName}/roles")
+    @PostMapping("identity/{realm}/users/{username}/products/{productName}/roles")
     public ResponseEntity<String> assignProductRoles(
             @PathVariable String realm,
             @PathVariable String username,
