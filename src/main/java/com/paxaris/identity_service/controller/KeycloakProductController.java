@@ -3,7 +3,6 @@ package com.paxaris.identity_service.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paxaris.identity_service.dto.*;
 import com.paxaris.identity_service.service.DynamicJwtDecoder;
-import com.paxaris.identity_service.service.KeycloakClientService;
 import com.paxaris.identity_service.service.KeycloakProductService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,7 +31,6 @@ public class KeycloakProductController {
     private final RestTemplate restTemplate = new RestTemplate();
     private final DynamicJwtDecoder jwtDecoder;
     private final KeycloakProductService productService;
-    private final KeycloakClientService clientService;
     private final ObjectMapper objectMapper;
 
     @Value("${keycloak.admin-username:admin}")
@@ -259,7 +257,7 @@ public class KeycloakProductController {
     public ResponseEntity<SignupStatus> signup(@RequestBody SignupRequest request) {
 
         try {
-            SignupStatus status = productService.signup(
+                SignupStatus status = productService.signup(
                     request.getRealmName(),
                     request.getAdminPassword()
             );
@@ -425,7 +423,7 @@ public class KeycloakProductController {
                 : authorizationHeader;
 
         try {
-            return ResponseEntity.ok(clientService.getAllClients(realm, token));
+            return ResponseEntity.ok(productService.getAllProducts(realm, token));
         } catch (HttpClientErrorException.Unauthorized e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         } catch (HttpClientErrorException.Forbidden e) {
@@ -442,9 +440,9 @@ public class KeycloakProductController {
             @PathVariable String realm,
             @PathVariable String clientName) {
         try {
-            String masterToken = clientService.getMyRealmToken("admin", "admin123", "admin-cli", "master")
+            String masterToken = productService.getMyRealmToken("admin", "admin123", "admin-cli", "master")
                     .get("access_token").toString();
-            String clientUUID = clientService.getClientUUID(realm, clientName, masterToken);
+            String clientUUID = productService.getProductUUID(realm, clientName, masterToken);
             return ResponseEntity.ok(clientUUID);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Failed to get client UUID: " + e.getMessage());
@@ -467,7 +465,7 @@ public class KeycloakProductController {
 
         try {
             // Pass the provided token to the service
-            String userId = clientService.createUser(realm, token, userPayload);
+            String userId = productService.createUser(realm, token, userPayload);
             return ResponseEntity.ok(userId);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Failed to create user: " + e.getMessage());
@@ -484,7 +482,7 @@ public class KeycloakProductController {
                 : authorizationHeader;
 
         try {
-            List<Map<String, Object>> users = clientService.getAllUsers(realm, token);
+            List<Map<String, Object>> users = productService.getAllUsers(realm, token);
             return ResponseEntity.ok(users);
         } catch (Exception e) {
             return ResponseEntity.badRequest().build();
@@ -504,7 +502,7 @@ public class KeycloakProductController {
                 : authorizationHeader;
 
         try {
-            clientService.createClientRoles(realm, clientName, roleRequests, token);
+            productService.createProductRoles(realm, clientName, roleRequests, token);
             return ResponseEntity.ok("Roles created successfully for client: " + clientName);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -523,7 +521,7 @@ public class KeycloakProductController {
                 : authorizationHeader;
 
         try {
-            List<Map<String, Object>> roles = clientService.getClientRoles(realm, clientName, token);
+            List<Map<String, Object>> roles = productService.getProductRoles(realm, clientName, token);
 
             return ResponseEntity.ok(roles);
         } catch (Exception e) {

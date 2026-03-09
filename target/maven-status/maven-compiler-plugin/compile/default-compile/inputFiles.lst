@@ -3,10 +3,7 @@ D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\config\SecurityConfig.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\config\SwaggerConfig.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\config\WebClientConfig.java
-D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\controller\AccessValidationController.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\controller\AuthController.java
-D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\controller\CrudKeycloakApiController.java
-D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\controller\KeycloakClientController.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\controller\KeycloakProductController.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\dto\AssignRoleRequest.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\dto\KeycloakConfig.java
@@ -18,8 +15,7 @@ D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\exception\GlobalExceptionHandler.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\identityService.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\service\DynamicJwtDecoder.java
-D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\service\impl\KeycloakClientServiceImpl.java
-D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\service\KeycloakClientService.java
+D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\service\impl\KeycloakProductServiceImpl.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\service\KeycloakProductService.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\service\KeycloakService.java
 D:\paxo_base_project\identity_service\src\main\java\com\paxaris\identity_service\service\ProvisioningService.java

@@ -16,28 +16,7 @@ public class KeycloakService {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
 
-    // ===================== TOKEN VALIDATION =====================
-    public Optional<String> validateAndGetUsername(String realm, String token) {
-        try {
-            String userInfoUrl = "http://localhost:8080/realms/" + realm + "/protocol/openid-connect/userinfo";
 
-            Map<String, String> headers = Map.of("Authorization", "Bearer " + token);
-            var entity = new org.springframework.http.HttpEntity<>(headers);
-
-            var response = restTemplate.exchange(userInfoUrl, org.springframework.http.HttpMethod.GET, entity, Map.class);
-
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                Object username = response.getBody().get("preferred_username");
-                if (username != null) {
-                    return Optional.of(username.toString());
-                }
-            }
-            return Optional.empty();
-        } catch (Exception e) {
-            log.error("Error validating token: {}", e.getMessage(), e);
-            return Optional.empty();
-        }
-    }
 
     // ===================== ROLES EXTRACTION =====================
     public List<String> getRoleFromToken(String token) {
