@@ -1,1 +1,2 @@
-com\paxaris\identity_service\identity_service.class
+com\paxaris\identity_service\IdentityServiceApplicationTests.class
+com\paxaris\identity_service\config\KeycloakRealmAndClientRoleConverterTest.class

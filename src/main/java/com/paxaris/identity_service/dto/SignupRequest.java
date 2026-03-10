@@ -1,16 +1,33 @@
 package com.paxaris.identity_service.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 @Data
+@Schema(
+        name = "SignupRequest",
+        description = "Request payload for user signup and realm creation"
+)
 public class SignupRequest {
 
-    // user input
+    @Schema(
+            description = "Name of the Keycloak realm to create",
+            example = "my-realm",
+            requiredMode = Schema.RequiredMode.REQUIRED
+    )
     private String realmName;
 
-    // user input (password for admin)
+    @Schema(
+            description = "Password for the admin user",
+            example = "admin@123",
+            requiredMode = Schema.RequiredMode.REQUIRED
+    )
     private String adminPassword;
 
-    // optional — default to "admin" if null
+    @Schema(
+            description = "Admin username (optional, defaults to 'admin')",
+            example = "admin",
+            defaultValue = "admin"
+    )
     private String adminUsername = "admin";
 }

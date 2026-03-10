@@ -2,8 +2,6 @@ package com.paxaris.identity_service.dto;
 
 import lombok.Data;
 
-import java.util.List;
-
 @Data
 public class RoleRequest {
     private String name;
@@ -16,5 +14,4 @@ public class RoleRequest {
     private String realmName;
     private String productName;
     private String roleName;
-//    private List<UrlEntry> urls;
 }

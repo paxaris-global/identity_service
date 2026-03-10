@@ -19,7 +19,6 @@ com\paxaris\identity_service\service\KeycloakProductService.class
 com\paxaris\identity_service\config\JwtDecoderConfig.class
 com\paxaris\identity_service\config\SecurityConfig.class
 com\paxaris\identity_service\config\WebClientConfig.class
-com\paxaris\identity_service\dto\UrlEntry.class
 com\paxaris\identity_service\identityService.class
 com\paxaris\identity_service\dto\KeycloakConfig.class
 com\paxaris\identity_service\service\impl\KeycloakProductServiceImpl$11.class
@@ -28,11 +27,9 @@ com\paxaris\identity_service\exception\GlobalExceptionHandler.class
 com\paxaris\identity_service\service\impl\KeycloakProductServiceImpl$3.class
 com\paxaris\identity_service\service\impl\KeycloakProductServiceImpl$4.class
 com\paxaris\identity_service\service\impl\KeycloakProductServiceImpl$14.class
-com\paxaris\identity_service\service\KeycloakService.class
 com\paxaris\identity_service\dto\RoleRequest.class
 com\paxaris\identity_service\service\impl\KeycloakProductServiceImpl$9.class
 com\paxaris\identity_service\service\impl\KeycloakProductServiceImpl$6.class
 com\paxaris\identity_service\dto\SignupStatus$SignupStatusBuilder.class
-com\paxaris\identity_service\config\SwaggerConfig.class
+com\paxaris\identity_service\config\OpenApiConfig.class
 com\paxaris\identity_service\dto\SignupRequest.class
-com\paxaris\identity_service\service\ProvisioningService.class

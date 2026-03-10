@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paxaris.identity_service.dto.*;
 import com.paxaris.identity_service.service.KeycloakProductService;
-import com.paxaris.identity_service.service.ProvisioningService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -62,7 +61,6 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
     private final KeycloakConfig config;
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
-    private final ProvisioningService provisioningService;
     private final WebClient webClient;
 
     @Value("${project.management.base-url}")
@@ -260,18 +258,16 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             extractZipFile(frontendZip, frontendPath);
             status.addStep("Extract Application Code", "SUCCESS", "ZIP files extracted");
 
-            String backendRepo = ProvisioningService.generateRepositoryName(realm, ownerUsername, clientId + "-backend");
-            String frontendRepo = ProvisioningService.generateRepositoryName(realm, ownerUsername, clientId + "-frontend");
+            String backendRepo = generateRepositoryName(realm, ownerUsername, clientId + "-backend");
+            String frontendRepo = generateRepositoryName(realm, ownerUsername, clientId + "-frontend");
             status.addStep("Generate Repository Names", "SUCCESS", backendRepo + " & " + frontendRepo);
 
-            status.addStep("Create GitHub Repositories", "IN_PROGRESS", "Creating repositories");
-            provisioningService.createRepo(backendRepo);
-            provisioningService.createRepo(frontendRepo);
-            status.addStep("Create GitHub Repositories", "SUCCESS", "Repositories created");
+            status.addStep("Create GitHub Repositories", "IN_PROGRESS", "Creating and provisioning repositories");
+            provisionRepositoryViaProductManager(backendRepo, backendPath);
+            provisionRepositoryViaProductManager(frontendRepo, frontendPath);
+            status.addStep("Create GitHub Repositories", "SUCCESS", "Repositories created and provisioned");
 
-            status.addStep("Upload Code to GitHub", "IN_PROGRESS", "Uploading code");
-            uploadDirectoryToGitHub(backendPath, backendRepo);
-            uploadDirectoryToGitHub(frontendPath, frontendRepo);
+            status.addStep("Upload Code to GitHub", "IN_PROGRESS", "Code uploaded (via Product Manager)");
             status.addStep("Upload Code to GitHub", "SUCCESS", "Code uploaded successfully");
 
             cleanupDirectory(backendPath);
@@ -1068,53 +1064,7 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
         }
     }
 
-    private void uploadDirectoryToGitHub(Path root, String repo) throws Exception {
-        Files.walk(root)
-            .filter(Files::isRegularFile)
-            .forEach(file -> {
-                try {
-                    String relativePath = root.relativize(file).toString().replace("\\", "/");
-                    byte[] content = Files.readAllBytes(file);
-                    uploadFileToGithub(relativePath, content, repo);
-                } catch (Exception e) {
-                    throw new RuntimeException("Failed to upload file to GitHub: " + e.getMessage(), e);
-                }
-            });
-    }
-
-    private void uploadFileToGithub(String path, byte[] content, String repo) throws Exception {
-        String apiUrl = buildGithubApiUrl(repo, path);
-        String base64Content = Base64.getEncoder().encodeToString(content);
-        String payload = buildGithubUploadPayload(base64Content);
-
-        HttpURLConnection conn = (HttpURLConnection) new java.net.URL(apiUrl).openConnection();
-        conn.setRequestMethod("PUT");
-        configureGithubConnection(conn);
-
-        try (var out = conn.getOutputStream()) {
-            out.write(payload.getBytes());
-        }
-
-        int responseCode = conn.getResponseCode();
-        if (responseCode >= 300) {
-            throw new RuntimeException("GitHub upload failed for: " + path + " (HTTP " + responseCode + ")");
-        }
-    }
-
-    private String buildGithubApiUrl(String repo, String path) {
-        return "https://api.github.com/repos/" + provisioningService.getGithubOrg() + "/" + repo + "/contents/" + path;
-    }
-
-    private String buildGithubUploadPayload(String base64Content) {
-        return String.format("{\"message\": \"initial commit\", \"content\": \"%s\"}", base64Content);
-    }
-
-    private void configureGithubConnection(HttpURLConnection conn) {
-        conn.setRequestProperty("Authorization", "Bearer " + provisioningService.getGithubToken());
-        conn.setRequestProperty("Accept", "application/vnd.github+json");
-        conn.setRequestProperty("Content-Type", "application/json");
-        conn.setDoOutput(true);
-    }
+    // GitHub upload methods removed - now delegated to Product Manager service
 
     private void handleProvisioningFailure(SignupStatus status, Exception e) {
         status.setStatus("FAILED");
@@ -1170,6 +1120,134 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
         } catch (Exception e) {
             log.warn("Failed to cleanup directory {}: {}", dir, e.getMessage());
         }
+    }
+
+    // ==================== PROVISIONING (via Product Manager) ====================
+
+    /**
+     * Generate a standardized repository name from realm, user, and client name
+     */
+    private static String generateRepositoryName(String realmName, String adminUsername, String clientName) {
+        String adminPart = adminUsername != null ? adminUsername : "admin";
+        return String.format("%s-%s-%s", realmName, adminPart, clientName).toLowerCase();
+    }
+
+    /**
+     * Call Product Manager microservice to provision repository with uploaded code
+     */
+    private void provisionRepositoryViaProductManager(String repoName, Path codePath) throws IOException {
+        String provisionUrl = projectManagementBaseUrl + "/project/provision/upload";
+        
+        log.info("Provisioning repository '{}' via Product Manager at {}", repoName, provisionUrl);
+        
+        Path zipFile = null;
+        try {
+            // Create ZIP from code directory
+            zipFile = createZipFromDirectory(codePath);
+            log.debug("Created ZIP file for upload: {}", zipFile);
+            
+            // Call Product Manager REST endpoint
+            callProductManagerProvisioning(provisionUrl, repoName, zipFile);
+            
+            log.info("✅ Repository '{}' provisioned successfully via Product Manager", repoName);
+            
+        } catch (Exception e) {
+            log.error("❌ Failed to provision repository via Product Manager: {}", e.getMessage());
+            throw new RuntimeException("Product Manager provisioning failed for repo: " + repoName, e);
+        } finally {
+            // Cleanup ZIP file
+            if (zipFile != null && Files.exists(zipFile)) {
+                try {
+                    Files.deleteIfExists(zipFile);
+                    log.debug("Cleaned up temporary ZIP file: {}", zipFile);
+                } catch (Exception e) {
+                    log.warn("Failed to cleanup ZIP file: {}", e.getMessage());
+                }
+            }
+        }
+    }
+
+    /**
+     * Call Product Manager provisioning endpoint with multipart form data
+     */
+    private void callProductManagerProvisioning(String url, String repoName, Path zipFile) throws IOException {
+        log.debug("Calling Product Manager endpoint: POST {}", url);
+        
+        try {
+            // Build multipart form data
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+            
+            LinkedMultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+            body.add("repoName", repoName);
+            body.add("zipFile", new org.springframework.core.io.FileSystemResource(zipFile.toFile()));
+            
+            HttpEntity<LinkedMultiValueMap<String, Object>> request = new HttpEntity<>(body, headers);
+            
+            // Send request to Product Manager
+            ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
+            
+            log.debug("Product Manager response status: {}", response.getStatusCode());
+            
+            // Check if successful
+            if (!response.getStatusCode().is2xxSuccessful()) {
+                String errorMsg = "Product Manager returned HTTP " + response.getStatusCode().value();
+                log.error("❌ {}", errorMsg);
+                throw new RuntimeException(errorMsg);
+            }
+            
+            // Verify response body
+            if (response.getBody() != null) {
+                String status = (String) response.getBody().get("status");
+                if ("success".equalsIgnoreCase(status)) {
+                    log.info("✅ Product Manager confirmed successful provisioning for: {}", repoName);
+                    return;
+                } else {
+                    String errorMsg = "Product Manager returned status: " + status;
+                    log.error("❌ {}", errorMsg);
+                    throw new RuntimeException(errorMsg);
+                }
+            } else {
+                throw new RuntimeException("Product Manager returned empty response");
+            }
+            
+        } catch (Exception e) {
+            log.error("REST call to Product Manager failed: {}", e.getMessage(), e);
+            throw new IOException("Failed to call Product Manager: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Create a ZIP file from a directory for upload to Product Manager
+     */
+    private Path createZipFromDirectory(Path sourceDir) throws IOException {
+        Path zipFile = Files.createTempFile("provisioning-", ".zip");
+        
+        try (java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(
+                Files.newOutputStream(zipFile))) {
+            
+            Files.walk(sourceDir)
+                .filter(Files::isRegularFile)
+                .forEach(file -> {
+                    try {
+                        String zipEntryName = sourceDir.relativize(file).toString().replace("\\", "/");
+                        java.util.zip.ZipEntry entry = new java.util.zip.ZipEntry(zipEntryName);
+                        zos.putNextEntry(entry);
+                        Files.copy(file, zos);
+                        zos.closeEntry();
+                        log.debug("Added to ZIP: {}", zipEntryName);
+                    } catch (IOException e) {
+                        throw new RuntimeException("Failed to add file to ZIP: " + file, e);
+                    }
+                });
+        } catch (RuntimeException e) {
+            Files.deleteIfExists(zipFile);
+            throw new IOException("Failed to create ZIP file: " + e.getMessage(), e.getCause());
+        }
+        
+        long zipSize = Files.size(zipFile);
+        log.debug("Created ZIP file: {} (size: {} bytes)", zipFile, zipSize);
+        return zipFile;
     }
 }
 
