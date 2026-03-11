@@ -1,12 +1,19 @@
-FROM openjdk:21
+FROM maven:3.9.9-eclipse-temurin-21 AS build
+WORKDIR /app
 
-# Install git (update package lists and clean up to reduce image size)
-RUN apt-get update && \
-    apt-get install -y git && \
-    rm -rf /var/lib/apt/lists/*
+COPY pom.xml ./
+COPY src ./src
 
-# Copy the built jar file into the container
-COPY target/identity_service-0.0.1-SNAPSHOT.jar /app/identity_service.jar
+RUN mvn -DskipTests package
 
-# Default command to run your application
+FROM eclipse-temurin:21-jre
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y git \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /app/target/identity_service-0.0.1-SNAPSHOT.jar /app/identity_service.jar
+
+EXPOSE 8087
 ENTRYPOINT ["java", "-jar", "/app/identity_service.jar"]
