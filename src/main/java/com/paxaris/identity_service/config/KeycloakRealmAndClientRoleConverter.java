@@ -10,7 +10,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Converts Keycloak realm roles + client roles into Spring Security authorities.
+ * Converts Keycloak realm roles + product roles into Spring Security authorities.
  */
 @Component
 public class KeycloakRealmAndClientRoleConverter implements Converter<Jwt, Collection<GrantedAuthority>> {
@@ -25,14 +25,14 @@ public class KeycloakRealmAndClientRoleConverter implements Converter<Jwt, Colle
             roles.addAll(realmRoles.stream().map(Object::toString).toList());
         }
 
-        // Client roles (resource_access)
+        // Product roles (resource_access)
         Map<String, Object> resourceAccess = jwt.getClaim("resource_access");
         if (resourceAccess != null) {
-            for (Object clientEntry : resourceAccess.values()) {
-                if (clientEntry instanceof Map<?, ?> clientMap) {
-                    Object clientRolesObj = clientMap.get("roles");
-                    if (clientRolesObj instanceof Collection<?> clientRoles) {
-                        roles.addAll(clientRoles.stream().map(Object::toString).toList());
+            for (Object productEntry : resourceAccess.values()) {
+                if (productEntry instanceof Map<?, ?> productMap) {
+                    Object productRolesObj = productMap.get("roles");
+                    if (productRolesObj instanceof Collection<?> productRoles) {
+                        roles.addAll(productRoles.stream().map(Object::toString).toList());
                     }
                 }
             }

@@ -28,11 +28,12 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.*;
 
 @RestController
-@RequestMapping("/")
+@RequestMapping({"/", "/api/v1/identity"})
 @RequiredArgsConstructor
 @Slf4j
 @Tag(name = "Identity Service", description = "APIs for authentication, authorization, and user/product management with Keycloak")
@@ -43,17 +44,20 @@ public class KeycloakProductController {
     private final KeycloakProductService productService;
     private final ObjectMapper objectMapper;
 
-    @Value("${keycloak.admin-username:admin}")
+        @Value("${keycloak.admin-username}")
     private String adminUsername;
 
     @Value("${keycloak.admin-password}")
     private String adminPassword;
 
-    @Value("${keycloak.client-id:admin-cli}")
+        @Value("${keycloak.client-id}")
     private String keycloakClientId;
 
-    @Value("${keycloak.master-realm:master}")
+        @Value("${keycloak.master-realm}")
     private String masterRealm;
+
+        @Value("${identity.login.default-product-id}")
+        private String defaultLoginProductId;
 
     private static final Logger logger = LoggerFactory.getLogger(KeycloakProductController.class);
 
@@ -74,14 +78,13 @@ public class KeycloakProductController {
             @RequestParam String realm,
             @RequestParam String username,
             @RequestParam String password,
-            @RequestParam(name = "product_id") String productId,
-            @RequestParam(name = "client_secret", required = false) String clientSecret) {
+            @RequestParam(name = "product_id") String productId) {
 
         try {
             Map<String, Object> token = productService.getMyRealmToken(username, password, productId, realm);
             return ResponseEntity.ok(token);
         } catch (Exception e) {
-            return ResponseEntity.status(401).body(Map.of("error", "Unauthorized", "message", e.getMessage()));
+                        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, e.getMessage(), e);
         }
     }
 
@@ -141,7 +144,7 @@ public class KeycloakProductController {
             @Parameter(description = "Keycloak realm name", required = true, example = "my-realm")
             @PathVariable String realm,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
-                    description = "Login credentials including username, password, and optional client details",
+                    description = "Login credentials including username, password, and optional product details",
                     required = true,
                     content = @Content(
                             mediaType = "application/json",
@@ -149,8 +152,8 @@ public class KeycloakProductController {
                                     {
                                       "username": "admin@example.com",
                                       "password": "password123",
-                                      "client_id": "my-product",
-                                      "client_secret": "optional-secret"
+                                                                                                                                                        "product_id": "my-product",
+                                                                                                                                                        "product_secret": "optional-secret"
                                     }
                                     """)
                     )
@@ -163,8 +166,8 @@ public class KeycloakProductController {
         try {
             String username = credentials.get("username");
             String password = credentials.get("password");
-            String productId = credentials.getOrDefault("client_id", "product-service");
-            String clientSecret = credentials.getOrDefault("client_secret", null);
+                        String productId = credentials.getOrDefault("product_id",
+                                        credentials.getOrDefault("client_id", defaultLoginProductId));
 
             logger.info("🔹 Authenticating user '{}' with productId '{}'", username, productId);
 
@@ -175,8 +178,7 @@ public class KeycloakProductController {
             String keycloakToken = (String) tokenMap.get("access_token");
             if (keycloakToken == null) {
                 logger.warn("⚠️ Invalid credentials or no token returned by Keycloak");
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                        .body(Map.of("error", "Invalid credentials"));
+                                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
             }
 
             // Decode JWT and extract roles/realm/product
@@ -244,8 +246,8 @@ public class KeycloakProductController {
 
         } catch (Exception e) {
             logger.error("❌ Login failed: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", "Login failed", "message", e.getMessage()));
+                        throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                                        "Login failed: " + e.getMessage(), e);
         }
     }
     @GetMapping("/validate")
@@ -290,10 +292,8 @@ public class KeycloakProductController {
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader) {
 
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of(
-                            "status", "INVALID",
-                            "message", "Authorization header missing or malformed"));
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
+                    "Authorization header missing or malformed");
         }
 
         String token = authHeader.substring(7).trim();
@@ -312,23 +312,23 @@ public class KeycloakProductController {
                             .toList()
                     : List.of();
 
-            // --- Safe extraction of client roles ---
+                        // --- Safe extraction of product roles ---
             Map<String, Object> resourceAccess = claims.get("resource_access") instanceof Map
                     ? (Map<String, Object>) claims.get("resource_access")
                     : Map.of();
-            List<String> clientRoles = new ArrayList<>();
+                        List<String> productRoles = new ArrayList<>();
             for (Map.Entry<String, Object> entry : resourceAccess.entrySet()) {
                 if (!(entry.getValue() instanceof Map))
                     continue;
-                Map<String, Object> clientMap = (Map<String, Object>) entry.getValue();
-                if (clientMap.get("roles") instanceof List<?> rolesList) {
-                    rolesList.forEach(r -> clientRoles.add(r.toString()));
+                                Map<String, Object> productMap = (Map<String, Object>) entry.getValue();
+                                if (productMap.get("roles") instanceof List<?> rolesList) {
+                                        rolesList.forEach(r -> productRoles.add(r.toString()));
                 }
             }
 
             // Merge roles
             List<String> allRoles = new ArrayList<>(realmRoles);
-            allRoles.addAll(clientRoles);
+                        allRoles.addAll(productRoles);
 
             // Extract realm
             String realm = claims.getOrDefault("iss", "").toString();
@@ -336,7 +336,6 @@ public class KeycloakProductController {
                 realm = realm.substring(realm.lastIndexOf("/realms/") + 8);
             }
 
-            // Product = client_id
             // Product = azp (Authorized Party)
             String product = claims.getOrDefault("azp", "").toString();
 
@@ -351,10 +350,8 @@ public class KeycloakProductController {
 
                 } catch (Exception e) {
                         log.warn("Token validation failed: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of(
-                            "status", "INVALID",
-                            "message", "Token invalid or expired: " + e.getMessage()));
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
+                    "Token invalid or expired: " + e.getMessage(), e);
         }
     }
 
@@ -376,13 +373,16 @@ public class KeycloakProductController {
 
         String token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
         boolean valid = productService.validateToken(realm, token);
-        return valid ? ResponseEntity.ok("Token is valid") : ResponseEntity.badRequest().body("Token is invalid");
+                if (!valid) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Token is invalid");
+                }
+                return ResponseEntity.ok("Token is valid");
     }
 
     @PostMapping(value = "/signup", consumes = MediaType.APPLICATION_JSON_VALUE)
     @Operation(
             summary = "Complete Signup with Realm Provisioning",
-            description = "Creates a new Keycloak realm with initial admin user and admin product client. " +
+            description = "Creates a new Keycloak realm with initial admin user and admin product. " +
                     "This is a comprehensive signup process that sets up the complete multi-tenant environment."
     )
     @ApiResponses(value = {
@@ -520,7 +520,8 @@ public class KeycloakProductController {
             productService.createRealm(realmName, masterToken);
             return ResponseEntity.ok("Realm created successfully: " + realmName);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Failed to create realm: " + e.getMessage());
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                        "Failed to create realm: " + e.getMessage(), e);
         }
     }
 
@@ -556,7 +557,8 @@ public class KeycloakProductController {
                     .get("access_token").toString();
             return ResponseEntity.ok(productService.getAllRealms(masterToken));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                        "Failed to retrieve realms: " + e.getMessage(), e);
         }
     }
 
@@ -587,7 +589,8 @@ public class KeycloakProductController {
                     : "";
             return ResponseEntity.ok(realmName);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                        "Failed to retrieve realm from token: " + e.getMessage(), e);
         }
     }
 
@@ -598,7 +601,7 @@ public class KeycloakProductController {
     )
     @Operation(
             summary = "Create Product with Deployment",
-            description = "Creates a new product/client in Keycloak and deploys backend/frontend applications. " +
+            description = "Creates a new product in Keycloak and deploys backend/frontend applications. " +
                     "This endpoint handles complete product provisioning including Docker deployment and GitHub repository setup."
     )
     @SecurityRequirement(name = "bearer")
@@ -695,12 +698,12 @@ public class KeycloakProductController {
 
 
 
-    // ---------------------------------get all clients
+    // ---------------------------------get all products
 
-    @GetMapping("clients/{realm}")
+    @GetMapping("products/{realm}")
     @Operation(
-            summary = "Get All Products/Clients",
-            description = "Retrieves a list of all products/clients configured in the specified realm"
+            summary = "Get All Products",
+            description = "Retrieves a list of all products configured in the specified realm"
     )
     @SecurityRequirement(name = "bearer")
     @ApiResponses(value = {
@@ -738,7 +741,7 @@ public class KeycloakProductController {
                     description = "Internal server error"
             )
     })
-    public ResponseEntity<List<Map<String, Object>>> getAllClients(
+        public ResponseEntity<List<Map<String, Object>>> getAllProducts(
             @Parameter(description = "Keycloak realm name", required = true, example = "my-realm")
             @PathVariable String realm,
             @Parameter(description = "JWT Bearer token", required = true)
@@ -751,20 +754,21 @@ public class KeycloakProductController {
         try {
             return ResponseEntity.ok(productService.getAllProducts(realm, token));
         } catch (HttpClientErrorException.Unauthorized e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+                        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid or expired token", e);
         } catch (HttpClientErrorException.Forbidden e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+                        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Insufficient permissions", e);
         } catch (Exception e) {
-            log.error("Failed to get clients for realm '{}': {}", realm, e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            log.error("Failed to get products for realm '{}': {}", realm, e.getMessage());
+                        throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                                        "Failed to get products: " + e.getMessage(), e);
         }
     }
 
     // -------------------------------------------------------------------------------------------------------------------------------------------
-    @GetMapping("/client/{realm}/{clientName}/uuid")
+    @GetMapping("/product/{realm}/{productName}/uuid")
     @Operation(
             summary = "Get Product UUID",
-            description = "Retrieves the internal UUID of a product/client by its client ID name"
+            description = "Retrieves the internal UUID of a product by its product ID name"
     )
     @ApiResponses(value = {
             @ApiResponse(
@@ -775,21 +779,22 @@ public class KeycloakProductController {
             @ApiResponse(
                     responseCode = "400",
                     description = "Failed to get product UUID",
-                    content = @Content(schema = @Schema(example = "Failed to get client UUID: Product not found"))
+                    content = @Content(schema = @Schema(example = "Failed to get product UUID: Product not found"))
             )
     })
-    public ResponseEntity<String> getClientUUID(
+    public ResponseEntity<String> getProductUUID(
             @Parameter(description = "Keycloak realm name", required = true, example = "my-realm")
             @PathVariable String realm,
-            @Parameter(description = "Product/Client name", required = true, example = "my-product")
-            @PathVariable String clientName) {
+            @Parameter(description = "Product name", required = true, example = "my-product")
+            @PathVariable String productName) {
         try {
             String masterToken = productService.getMyRealmToken(adminUsername, adminPassword, keycloakClientId, masterRealm)
                     .get("access_token").toString();
-            String clientUUID = productService.getProductUUID(realm, clientName, masterToken);
-            return ResponseEntity.ok(clientUUID);
+            String productUUID = productService.getProductUUID(realm, productName, masterToken);
+            return ResponseEntity.ok(productUUID);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Failed to get client UUID: " + e.getMessage());
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                        "Failed to get product UUID: " + e.getMessage(), e);
         }
     }
 
@@ -853,7 +858,8 @@ public class KeycloakProductController {
             String userId = productService.createUser(realm, token, userPayload);
             return ResponseEntity.ok(userId);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Failed to create user: " + e.getMessage());
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                        "Failed to create user: " + e.getMessage(), e);
         }
     }
 
@@ -901,22 +907,23 @@ public class KeycloakProductController {
             List<Map<String, Object>> users = productService.getAllUsers(realm, token);
             return ResponseEntity.ok(users);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                        "Failed to retrieve users: " + e.getMessage(), e);
         }
     }
 
     // ------------------- ROLE -------------------
-    @PostMapping("{realm}/clients/{clientName}/roles")
+    @PostMapping("{realm}/products/{productName}/roles")
     @Operation(
             summary = "Create Product Roles",
-            description = "Creates one or more roles for a specific product/client with optional URIs and HTTP methods for API access control"
+            description = "Creates one or more roles for a specific product with optional URIs and HTTP methods for API access control"
     )
     @SecurityRequirement(name = "bearer")
     @ApiResponses(value = {
             @ApiResponse(
                     responseCode = "200",
                     description = "Roles created successfully",
-                    content = @Content(schema = @Schema(example = "Roles created successfully for client: my-product"))
+                    content = @Content(schema = @Schema(example = "Roles created successfully for product: my-product"))
             ),
             @ApiResponse(
                     responseCode = "500",
@@ -924,11 +931,11 @@ public class KeycloakProductController {
                     content = @Content(schema = @Schema(example = "Failed to create roles: Role already exists"))
             )
     })
-    public ResponseEntity<String> createClientRoles(
+    public ResponseEntity<String> createProductRoles(
             @Parameter(description = "Keycloak realm name", required = true, example = "my-realm")
             @PathVariable String realm,
-            @Parameter(description = "Product/Client name", required = true, example = "my-product")
-            @PathVariable String clientName,
+            @Parameter(description = "Product name", required = true, example = "my-product")
+            @PathVariable String productName,
             @Parameter(description = "JWT Bearer token", required = true)
             @RequestHeader("Authorization") String authorizationHeader,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
@@ -961,18 +968,18 @@ public class KeycloakProductController {
                 : authorizationHeader;
 
         try {
-            productService.createProductRoles(realm, clientName, roleRequests, token);
-            return ResponseEntity.ok("Roles created successfully for client: " + clientName);
+            productService.createProductRoles(realm, productName, roleRequests, token);
+            return ResponseEntity.ok("Roles created successfully for product: " + productName);
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Failed to create roles: " + e.getMessage());
+                        throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                                        "Failed to create roles: " + e.getMessage(), e);
         }
     }
 
-    @GetMapping("{realm}/clients/{clientName}/roles")
+    @GetMapping("{realm}/products/{productName}/roles")
     @Operation(
             summary = "Get Product Roles",
-            description = "Retrieves all roles configured for a specific product/client"
+            description = "Retrieves all roles configured for a specific product"
     )
     @SecurityRequirement(name = "bearer")
     @ApiResponses(value = {
@@ -1006,14 +1013,14 @@ public class KeycloakProductController {
             @ApiResponse(
                     responseCode = "500",
                     description = "Failed to fetch roles",
-                    content = @Content(schema = @Schema(example = "Failed to fetch client roles: Product not found"))
+                    content = @Content(schema = @Schema(example = "Failed to fetch product roles: Product not found"))
             )
     })
-    public ResponseEntity<?> getClientRoles(
+    public ResponseEntity<?> getProductRoles(
             @Parameter(description = "Keycloak realm name", required = true, example = "my-realm")
             @PathVariable String realm,
-            @Parameter(description = "Product/Client name", required = true, example = "my-product")
-            @PathVariable String clientName,
+            @Parameter(description = "Product name", required = true, example = "my-product")
+            @PathVariable String productName,
             @Parameter(description = "JWT Bearer token", required = true)
             @RequestHeader("Authorization") String authorizationHeader) {
 
@@ -1022,12 +1029,12 @@ public class KeycloakProductController {
                 : authorizationHeader;
 
         try {
-            List<Map<String, Object>> roles = productService.getProductRoles(realm, clientName, token);
+                        List<Map<String, Object>> roles = productService.getProductRoles(realm, productName, token);
 
             return ResponseEntity.ok(roles);
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Failed to fetch client roles: " + e.getMessage());
+                        throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                                                                                "Failed to fetch product roles: " + e.getMessage(), e);
         }
     }
 
@@ -1035,7 +1042,7 @@ public class KeycloakProductController {
     @PutMapping("role/{realm}/{product}/{roleName}")
     @Operation(
             summary = "Update Product Role",
-            description = "Updates an existing role's details including name, description, URI, and HTTP method for a product/client"
+            description = "Updates an existing role's details including name, description, URI, and HTTP method for a product"
     )
     @ApiResponses(value = {
             @ApiResponse(
@@ -1057,7 +1064,7 @@ public class KeycloakProductController {
     public ResponseEntity<String> updateRole(
             @Parameter(description = "Keycloak realm name", required = true, example = "my-realm")
             @PathVariable String realm,
-            @Parameter(description = "Product/Client name", required = true, example = "my-product")
+            @Parameter(description = "Product name", required = true, example = "my-product")
             @PathVariable String product,
             @Parameter(description = "Current role name to update", required = true, example = "admin")
             @PathVariable String roleName,
@@ -1090,14 +1097,14 @@ public class KeycloakProductController {
                     masterToken
             );
 
-            return ok
-                    ? ResponseEntity.ok("Role updated successfully")
-                    : ResponseEntity.badRequest().body("Failed to update role");
+            if (!ok) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Failed to update role");
+            }
+            return ResponseEntity.ok("Role updated successfully");
 
         } catch (Exception e) {
-            return ResponseEntity
-                    .status(500)
-                    .body("Failed to update role: " + e.getMessage());
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Failed to update role: " + e.getMessage(), e);
         }
     }
 
@@ -1107,7 +1114,7 @@ public class KeycloakProductController {
     @DeleteMapping("role/{realm}/{product}/{roleName}")
     @Operation(
             summary = "Delete Product Role",
-            description = "Permanently deletes a role from a product/client. This action cannot be undone."
+            description = "Permanently deletes a role from a product. This action cannot be undone."
     )
     @ApiResponses(value = {
             @ApiResponse(
@@ -1129,7 +1136,7 @@ public class KeycloakProductController {
     public ResponseEntity<String> deleteProductRole(
             @Parameter(description = "Keycloak realm name", required = true, example = "my-realm")
             @PathVariable String realm,
-            @Parameter(description = "Product/Client name", required = true, example = "my-product")
+            @Parameter(description = "Product name", required = true, example = "my-product")
             @PathVariable String product,
             @Parameter(description = "Role name to delete", required = true, example = "admin")
             @PathVariable String roleName) {
@@ -1156,12 +1163,12 @@ public class KeycloakProductController {
 
         } catch (RuntimeException e) {
             log.error("❌ Business error: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(e.getMessage());
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
 
         } catch (Exception e) {
             log.error("🔥 System error", e);
-            return ResponseEntity.status(500)
-                    .body("Failed to delete role: " + e.getMessage());
+                        throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                                        "Failed to delete role: " + e.getMessage(), e);
         }
     }
 
@@ -1192,7 +1199,7 @@ public class KeycloakProductController {
             @PathVariable String realm,
             @Parameter(description = "Username to assign roles to", required = true, example = "john.doe")
             @PathVariable String username,
-            @Parameter(description = "Product/Client name", required = true, example = "my-product")
+            @Parameter(description = "Product name", required = true, example = "my-product")
             @PathVariable String productName,
             @Parameter(description = "JWT Bearer token", required = true)
             @RequestHeader("Authorization") String authorizationHeader,
@@ -1308,7 +1315,7 @@ public ResponseEntity<String> updateUserProductRoles(
         @PathVariable String realm,
         @Parameter(description = "Username", required = true, example = "john.doe")
         @PathVariable String username,
-        @Parameter(description = "Product/Client name", required = true, example = "my-product")
+        @Parameter(description = "Product name", required = true, example = "my-product")
         @PathVariable String productName,
         @Parameter(description = "Current role name to be removed", required = true, example = "user")
         @PathVariable String oldRole,
@@ -1346,7 +1353,8 @@ public ResponseEntity<String> updateUserProductRoles(
 
     } catch (Exception e) {
         log.error("❌ Role update failed", e);
-        return ResponseEntity.status(500).body(e.getMessage());
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                                "Role update failed: " + e.getMessage(), e);
     }
 }
 
@@ -1374,7 +1382,7 @@ public ResponseEntity<String> deleteUserProductRole(
         @PathVariable String realm,
         @Parameter(description = "Username", required = true, example = "john.doe")
         @PathVariable String username,
-        @Parameter(description = "Product/Client name", required = true, example = "my-product")
+        @Parameter(description = "Product name", required = true, example = "my-product")
         @PathVariable String productName,
         @Parameter(description = "Role name to remove from user", required = true, example = "admin")
         @PathVariable String roleName) {
@@ -1396,7 +1404,8 @@ public ResponseEntity<String> deleteUserProductRole(
 
     } catch (Exception e) {
         log.error("❌ Role delete failed", e);
-        return ResponseEntity.status(500).body(e.getMessage());
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                                "Role delete failed: " + e.getMessage(), e);
     }
 }
 
@@ -1440,7 +1449,8 @@ public ResponseEntity<String> deleteUserProductRole(
 
         } catch (Exception e) {
             log.error("❌ User delete failed", e);
-            return ResponseEntity.status(500).body(e.getMessage());
+                        throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                                        "User delete failed: " + e.getMessage(), e);
         }
     }
 

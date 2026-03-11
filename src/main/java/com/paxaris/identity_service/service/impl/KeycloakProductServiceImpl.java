@@ -32,7 +32,7 @@ import java.util.stream.Collectors;
  * Comprehensive Keycloak integration service with clear separation of concerns:
  * - Token Management: Master realm and user realm authentication
  * - Realm Operations: CRUD operations for Keycloak realms
- * - Product Management: Client/product creation with GitHub provisioning
+ * - Product Management: Product creation with GitHub provisioning
  * - User Management: User CRUD and resolution
  * - Role Management: Role creation, assignment, and authorization
  * - Signup Workflow: Complete onboarding orchestration
@@ -49,7 +49,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class KeycloakProductServiceImpl implements KeycloakProductService {
 
-    private static final String DEFAULT_ADMIN_USERNAME_FALLBACK = "admin";
     private static final String GRANT_TYPE_PASSWORD = "password";
 
     private final KeycloakConfig config;
@@ -60,37 +59,46 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
     @Value("${project.management.base-url}")
     private String projectManagementBaseUrl;
 
-    @Value("${project.management.role-sync-path:/project/roles/save-or-update}")
+    @Value("${project.management.role-sync-path}")
     private String roleSyncPath;
 
-    @Value("${project.management.provision-upload-path:/project/provision/upload}")
+    @Value("${project.management.provision-upload-path}")
     private String provisionUploadPath;
 
-    @Value("${keycloak.client-id:admin-cli}")
+    @Value("${keycloak.client-id}")
     private String adminCliClient;
 
-    @Value("${keycloak.master-realm:master}")
+    @Value("${keycloak.master-realm}")
     private String masterRealm;
 
-    @Value("${keycloak.realm-management-client:realm-management}")
+    @Value("${keycloak.realm-management-client}")
     private String realmManagementClient;
 
-    @Value("${keycloak.protocol:openid-connect}")
+    @Value("${keycloak.protocol}")
     private String keycloakProtocol;
 
-    @Value("${identity.default-admin.username:admin}")
+    @Value("${identity.default-admin.username}")
     private String defaultAdminUsername;
 
-    @Value("${identity.default-admin.email:admin@paxarisglobal.com}")
+    @Value("${identity.default-admin.email}")
     private String defaultAdminEmail;
 
-    @Value("${identity.token-config.access-token-lifespan-seconds:7200}")
+    @Value("${identity.default-admin.first-name}")
+    private String defaultAdminFirstName;
+
+    @Value("${identity.default-admin.last-name}")
+    private String defaultAdminLastName;
+
+    @Value("${identity.default-admin.realm-management-roles}")
+    private String defaultAdminRealmManagementRoles;
+
+    @Value("${identity.token-config.access-token-lifespan-seconds}")
     private int accessTokenLifespanSeconds;
 
-    @Value("${identity.token-config.sso-session-idle-timeout-seconds:28800}")
+    @Value("${identity.token-config.sso-session-idle-timeout-seconds}")
     private int ssoSessionIdleTimeoutSeconds;
 
-    @Value("${identity.token-config.sso-session-max-lifespan-seconds:86400}")
+    @Value("${identity.token-config.sso-session-max-lifespan-seconds}")
     private int ssoSessionMaxLifespanSeconds;
 
 
@@ -139,13 +147,13 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
 
     @Override
     public Map<String, Object> getMyRealmToken(String username, String password, String clientId, String realm) {
-        log.debug("Starting login flow for user '{}' in realm '{}' with client '{}'", username, realm, clientId);
+        log.debug("Starting login flow for user '{}' in realm '{}' with product '{}'", username, realm, clientId);
 
         try {
             String clientSecret = null;
             if (!adminCliClient.equals(clientId)) {
                 clientSecret = fetchProductSecretByClientId(realm, clientId);
-                log.debug("Client secret resolved for client '{}'", clientId);
+                log.debug("Product secret resolved for product '{}'", clientId);
             }
 
             String tokenUrl = buildUrl("/realms/" + realm + "/protocol/openid-connect/token");
@@ -263,7 +271,7 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
     }
 
 
-    // ==================== PRODUCT (CLIENT) MANAGEMENT ====================
+    // ==================== PRODUCT MANAGEMENT ====================
 
     @Override
     public String createProduct(String realm, String clientId, boolean isPublicClient, String adminToken,
@@ -274,9 +282,9 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
         Path frontendPath = null;
 
         try {
-            status.addStep("Create Client", "IN_PROGRESS", "Creating Keycloak client");
+            status.addStep("Create Product", "IN_PROGRESS", "Creating Keycloak product");
             String clientUUID = createKeycloakClient(realm, clientId, isPublicClient, frontendBaseUrl, adminToken);
-            status.addStep("Create Client", "SUCCESS", "Client created: " + clientUUID);
+            status.addStep("Create Product", "SUCCESS", "Product created: " + clientUUID);
 
             status.addStep("Extract Application Code", "IN_PROGRESS", "Extracting ZIP files");
             backendPath = Files.createTempDirectory("backend-extract-");
@@ -315,7 +323,7 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
 
     private String createKeycloakClient(String realm, String clientId, boolean isPublicClient,
                                         String frontendBaseUrl, String token) {
-        log.info("Creating Keycloak client '{}' in realm '{}' (public={})", clientId, realm, isPublicClient);
+        log.info("Creating Keycloak product '{}' in realm '{}' (public={})", clientId, realm, isPublicClient);
         String url = buildUrl("/admin/realms/" + realm + "/clients");
         Map<String, Object> body = buildClientConfiguration(clientId, isPublicClient, frontendBaseUrl);
         HttpHeaders headers = createJsonHeaders(token);
@@ -326,11 +334,11 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             if (!isPublicClient) {
                 ensureClientSecret(realm, clientUUID, token);
             }
-            log.info("Client '{}' created successfully with UUID: {}", clientId, clientUUID);
+            log.info("Product '{}' created successfully with UUID: {}", clientId, clientUUID);
             return clientUUID;
         } catch (Exception e) {
-            log.error("Failed to create client '{}': {}", clientId, e.getMessage());
-            throw new RuntimeException("Failed to create client", e);
+            log.error("Failed to create product '{}': {}", clientId, e.getMessage());
+            throw new RuntimeException("Failed to create product", e);
         }
     }
 
@@ -364,7 +372,7 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
     }
 
     private void ensureClientSecret(String realm, String clientUUID, String token) {
-        log.debug("Generating client secret for UUID: {}", clientUUID);
+        log.debug("Generating product secret for UUID: {}", clientUUID);
         String url = buildUrl("/admin/realms/" + realm + "/clients/" + clientUUID + "/client-secret");
         HttpHeaders headers = createBearerHeaders(token);
 
@@ -372,18 +380,18 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
                 url, HttpMethod.POST, new HttpEntity<>(headers), new ParameterizedTypeReference<>() {});
             if (!response.getStatusCode().is2xxSuccessful()) {
-                throw new RuntimeException("Failed to generate client secret");
+                throw new RuntimeException("Failed to generate product secret");
             }
-            log.debug("Client secret generated successfully for UUID: {}", clientUUID);
+            log.debug("Product secret generated successfully for UUID: {}", clientUUID);
         } catch (Exception e) {
-            log.error("Failed to generate client secret: {}", e.getMessage());
-            throw new RuntimeException("Failed to generate client secret", e);
+            log.error("Failed to generate product secret: {}", e.getMessage());
+            throw new RuntimeException("Failed to generate product secret", e);
         }
     }
 
     @Override
     public List<Map<String, Object>> getAllProducts(String realm, String token) {
-        log.info("Fetching all products (clients) in realm '{}'", realm);
+        log.info("Fetching all products in realm '{}'", realm);
         String url = buildUrl("/admin/realms/" + realm + "/clients");
         HttpHeaders headers = createBearerHeaders(token);
 
@@ -398,7 +406,7 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
 
     @Override
     public String getProductSecret(String realm, String clientId, String token) {
-        log.debug("Fetching product secret for client '{}' in realm '{}'", clientId, realm);
+        log.debug("Fetching product secret for product '{}' in realm '{}'", clientId, realm);
         String clientUUID = getProductUUID(realm, clientId, token);
         String url = buildUrl("/admin/realms/" + realm + "/clients/" + clientUUID + "/client-secret");
         HttpHeaders headers = createBearerHeaders(token);
@@ -409,7 +417,7 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             return (String) map.get("value");
         } catch (Exception e) {
             log.error("Failed to fetch secret for '{}': {}", clientId, e.getMessage());
-            throw new RuntimeException("Failed to fetch client secret", e);
+            throw new RuntimeException("Failed to fetch product secret", e);
         }
     }
 
@@ -423,9 +431,9 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             ResponseEntity<List<Map<String, Object>>> response = restTemplate.exchange(
                 url, HttpMethod.GET, new HttpEntity<>(headers), new ParameterizedTypeReference<>() {});
 
-            List<Map<String, Object>> clients = response.getBody();
-            if (clients != null && !clients.isEmpty()) {
-                String uuid = (String) clients.get(0).get("id");
+            List<Map<String, Object>> products = response.getBody();
+            if (products != null && !products.isEmpty()) {
+                String uuid = (String) products.get(0).get("id");
                 log.debug("Resolved product UUID for '{}': {}", clientId, uuid);
                 return uuid;
             }
@@ -442,13 +450,13 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
     }
 
     private String fetchProductSecretByClientId(String realm, String clientId) {
-        log.debug("Fetching product secret for client '{}' in realm '{}'", clientId, realm);
+        log.debug("Fetching product secret for product '{}' in realm '{}'", clientId, realm);
         try {
             String adminToken = getMasterToken();
             return getProductSecret(realm, clientId, adminToken);
         } catch (Exception e) {
             log.error("Failed to fetch product secret for '{}': {}", clientId, e.getMessage());
-            throw new RuntimeException("Failed to fetch client secret for client " + clientId, e);
+            throw new RuntimeException("Failed to fetch product secret for product " + clientId, e);
         }
     }
 
@@ -944,9 +952,9 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
     }
 
     private String executeCreateClientStep(SignupStatus status, String realm, String clientId, String token) {
-        status.addStep("Create Client", "IN_PROGRESS", "Creating admin client " + clientId);
+        status.addStep("Create Product", "IN_PROGRESS", "Creating admin product " + clientId);
         String clientUUID = createAdminClient(realm, clientId, token);
-        status.addStep("Create Client", "SUCCESS", "Client created: " + clientUUID);
+        status.addStep("Create Product", "SUCCESS", "Product created: " + clientUUID);
         return clientUUID;
     }
 
@@ -960,9 +968,11 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
 
     private void executeAssignAdminRolesStep(SignupStatus status, String realm, String userId, String token) {
         status.addStep("Assign Roles", "IN_PROGRESS", "Assigning admin permissions");
-        List<String> adminRoles = List.of("create-client", "impersonation", "manage-realm", "manage-users", "manage-clients");
-        for (String role : adminRoles) {
-            assignRealmManagementRoleToUser(realm, userId, role, token);
+        for (String role : defaultAdminRealmManagementRoles.split(",")) {
+            String normalizedRole = role.trim();
+            if (!normalizedRole.isEmpty()) {
+                assignRealmManagementRoleToUser(realm, userId, normalizedRole, token);
+            }
         }
         status.addStep("Assign Roles", "SUCCESS", "Admin roles assigned");
     }
@@ -971,8 +981,8 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
         Map<String, Object> userPayload = new HashMap<>();
         userPayload.put("username", defaultAdminUsername);
         userPayload.put("email", defaultAdminEmail);
-        userPayload.put("firstName", "Admin");
-        userPayload.put("lastName", "User");
+        userPayload.put("firstName", defaultAdminFirstName);
+        userPayload.put("lastName", defaultAdminLastName);
         userPayload.put("enabled", true);
         userPayload.put("emailVerified", true);
         userPayload.put("requiredActions", Collections.emptyList());
@@ -981,7 +991,7 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
     }
 
     private String createAdminClient(String realm, String clientId, String token) {
-        log.debug("Creating admin client '{}' in realm '{}'", clientId, realm);
+        log.debug("Creating admin product '{}' in realm '{}'", clientId, realm);
         String url = buildUrl("/admin/realms/" + realm + "/clients");
         Map<String, Object> body = new HashMap<>();
         body.put("clientId", clientId);
@@ -1001,11 +1011,11 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(body, headers), Void.class);
             String clientUUID = getProductUUID(realm, clientId, token);
             ensureClientSecret(realm, clientUUID, token);
-            log.info("Admin client '{}' created successfully with UUID: {}", clientId, clientUUID);
+            log.info("Admin product '{}' created successfully with UUID: {}", clientId, clientUUID);
             return clientUUID;
         } catch (Exception e) {
-            log.error("Failed to create admin client: {}", e.getMessage());
-            throw new RuntimeException("Failed to create admin client", e);
+            log.error("Failed to create admin product: {}", e.getMessage());
+            throw new RuntimeException("Failed to create admin product", e);
         }
     }
 
@@ -1152,11 +1162,11 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
     // ==================== PROVISIONING (via Product Manager) ====================
 
     /**
-     * Generate a standardized repository name from realm, user, and client name
+     * Generate a standardized repository name from realm, user, and product name
      */
-    private static String generateRepositoryName(String realmName, String adminUsername, String clientName) {
-        String adminPart = adminUsername != null ? adminUsername : DEFAULT_ADMIN_USERNAME_FALLBACK;
-        return String.format("%s-%s-%s", realmName, adminPart, clientName).toLowerCase();
+    private String generateRepositoryName(String realmName, String adminUsername, String productName) {
+        String adminPart = (adminUsername != null && !adminUsername.isBlank()) ? adminUsername : defaultAdminUsername;
+        return String.format("%s-%s-%s", realmName, adminPart, productName).toLowerCase();
     }
 
     /**

@@ -61,7 +61,7 @@ productService.getMyRealmToken(adminUsername, adminPassword, keycloakClientId, m
 
 ```bash
 # Set password
-export KEYCLOAK_ADMIN_PASSWORD=admin@123
+export KEYCLOAK_ADMIN_PASSWORD=<strong-password>
 
 # Run application
 mvn spring-boot:run
@@ -76,7 +76,7 @@ docker run -d \
   -e KEYCLOAK_BASE_URL=http://keycloak:8080 \
   -e KEYCLOAK_REALM=master \
   -e KEYCLOAK_ADMIN=admin \
-  -e KEYCLOAK_ADMIN_PASSWORD=admin@123 \
+  -e KEYCLOAK_ADMIN_PASSWORD=<strong-password> \
   -e KEYCLOAK_CLIENT_ID=admin-cli \
   -e KEYCLOAK_MASTER_REALM=master \
   -p 8087:8087 \
@@ -126,7 +126,7 @@ export KEYCLOAK_MASTER_REALM=custom-master
 | What | Where | Now Configured In |
 |------|-------|------------------|
 | `admin` | Username | `keycloak.admin-username` |
-| `admin123` / `admin@123` | Password | `keycloak.admin-password` |
+| `example password` | Password | `keycloak.admin-password` |
 | `admin-cli` | Client ID | `keycloak.client-id` |
 | `master` | Master Realm | `keycloak.master-realm` |
 

@@ -19,10 +19,10 @@ public class DynamicJwtDecoder implements JwtDecoder {
 
     private final Map<String, JwtDecoder> decoderCache = new ConcurrentHashMap<>();
 
-    @Value("${identity.jwt.issuer-host-rewrite.from:localhost}")
+    @Value("${identity.jwt.issuer-host-rewrite.from}")
     private String issuerHostRewriteFrom;
 
-    @Value("${identity.jwt.issuer-host-rewrite.to:keycloak-server}")
+    @Value("${identity.jwt.issuer-host-rewrite.to}")
     private String issuerHostRewriteTo;
 
     @Override

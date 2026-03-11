@@ -19,15 +19,14 @@ public class SignupRequest {
 
     @Schema(
             description = "Password for the admin user",
-            example = "admin@123",
+            example = "StrongPassword!ChangeMe",
             requiredMode = Schema.RequiredMode.REQUIRED
     )
     private String adminPassword;
 
     @Schema(
-            description = "Admin username (optional, defaults to 'admin')",
-            example = "admin",
-            defaultValue = "admin"
+            description = "Admin username (optional). If omitted, service configuration is used",
+            example = "admin"
     )
-    private String adminUsername = "admin";
+    private String adminUsername;
 }

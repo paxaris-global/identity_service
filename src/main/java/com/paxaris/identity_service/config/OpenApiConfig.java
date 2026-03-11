@@ -25,34 +25,34 @@ import org.springframework.context.annotation.Configuration;
 )
 public class OpenApiConfig {
 
-        @Value("${springdoc.info.title:Identity Service API}")
+        @Value("${springdoc.info.title}")
         private String apiTitle;
 
-        @Value("${springdoc.info.version:1.0.0}")
+        @Value("${springdoc.info.version}")
         private String apiVersion;
 
-        @Value("${springdoc.info.description:Identity Service provides authentication and authorization APIs using Keycloak}")
+        @Value("${springdoc.info.description}")
         private String apiDescription;
 
-        @Value("${springdoc.info.contact.name:Paxaris Global}")
+        @Value("${springdoc.info.contact.name}")
         private String contactName;
 
-        @Value("${springdoc.info.contact.url:https://paxarisglobal.com}")
+        @Value("${springdoc.info.contact.url}")
         private String contactUrl;
 
-        @Value("${springdoc.info.contact.email:support@paxarisglobal.com}")
+        @Value("${springdoc.info.contact.email}")
         private String contactEmail;
 
-        @Value("${springdoc.info.license.name:Apache 2.0}")
+        @Value("${springdoc.info.license.name}")
         private String licenseName;
 
-        @Value("${springdoc.info.license.url:https://www.apache.org/licenses/LICENSE-2.0.html}")
+        @Value("${springdoc.info.license.url}")
         private String licenseUrl;
 
-        @Value("${springdoc.external-docs.description:Keycloak Documentation}")
+        @Value("${springdoc.external-docs.description}")
         private String externalDocsDescription;
 
-        @Value("${springdoc.external-docs.url:https://www.keycloak.org/docs/latest/}")
+        @Value("${springdoc.external-docs.url}")
         private String externalDocsUrl;
 
     @Bean
