@@ -13,6 +13,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -47,16 +49,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class KeycloakProductServiceImpl implements KeycloakProductService {
 
-    private static final String ADMIN_CLI_CLIENT = "admin-cli";
-    private static final String MASTER_REALM = "master";
+    private static final String DEFAULT_ADMIN_USERNAME_FALLBACK = "admin";
     private static final String GRANT_TYPE_PASSWORD = "password";
-    private static final String REALM_MANAGEMENT_CLIENT = "realm-management";
-    private static final String PROTOCOL_OPENID_CONNECT = "openid-connect";
-    private static final String ADMIN_USERNAME = "admin";
-    private static final String ADMIN_EMAIL = "admin@paxarisglobal.com";
-    private static final int TOKEN_LIFESPAN_SECONDS = 7200;
-    private static final int SSO_SESSION_IDLE_TIMEOUT = 28800;
-    private static final int SSO_SESSION_MAX_LIFESPAN = 86400;
 
     private final KeycloakConfig config;
     private final RestTemplate restTemplate;
@@ -66,14 +60,47 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
     @Value("${project.management.base-url}")
     private String projectManagementBaseUrl;
 
+    @Value("${project.management.role-sync-path:/project/roles/save-or-update}")
+    private String roleSyncPath;
+
+    @Value("${project.management.provision-upload-path:/project/provision/upload}")
+    private String provisionUploadPath;
+
+    @Value("${keycloak.client-id:admin-cli}")
+    private String adminCliClient;
+
+    @Value("${keycloak.master-realm:master}")
+    private String masterRealm;
+
+    @Value("${keycloak.realm-management-client:realm-management}")
+    private String realmManagementClient;
+
+    @Value("${keycloak.protocol:openid-connect}")
+    private String keycloakProtocol;
+
+    @Value("${identity.default-admin.username:admin}")
+    private String defaultAdminUsername;
+
+    @Value("${identity.default-admin.email:admin@paxarisglobal.com}")
+    private String defaultAdminEmail;
+
+    @Value("${identity.token-config.access-token-lifespan-seconds:7200}")
+    private int accessTokenLifespanSeconds;
+
+    @Value("${identity.token-config.sso-session-idle-timeout-seconds:28800}")
+    private int ssoSessionIdleTimeoutSeconds;
+
+    @Value("${identity.token-config.sso-session-max-lifespan-seconds:86400}")
+    private int ssoSessionMaxLifespanSeconds;
+
 
     // ==================== TOKEN MANAGEMENT ====================
 
     private String getMasterToken() {
         log.debug("Fetching master admin token from Keycloak");
-        String tokenUrl = buildUrl("/realms/" + MASTER_REALM + "/protocol/openid-connect/token");
+        String tokenUrl = buildUrl("/realms/" + masterRealm + "/protocol/openid-connect/token");
         MultiValueMap<String, String> body = buildTokenRequestBody(
-            GRANT_TYPE_PASSWORD, ADMIN_CLI_CLIENT, config.getAdminUsername(), config.getAdminPassword(), null);
+            GRANT_TYPE_PASSWORD, adminCliClient, config.getAdminUsername(), config.getAdminPassword(), null);
 
         try {
             Map<String, Object> response = executeTokenRequest(tokenUrl, body);
@@ -82,7 +109,7 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             return token;
         } catch (HttpClientErrorException.Unauthorized e) {
             log.error("Master token auth failed - Username: {}, Client: {}. Check Keycloak credentials.",
-                config.getAdminUsername(), ADMIN_CLI_CLIENT);
+                config.getAdminUsername(), adminCliClient);
             throw new RuntimeException("Authentication failed for master token", e);
         } catch (Exception e) {
             log.error("Failed to fetch master token from Keycloak: {}", e.getMessage());
@@ -116,7 +143,7 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
 
         try {
             String clientSecret = null;
-            if (!ADMIN_CLI_CLIENT.equals(clientId)) {
+            if (!adminCliClient.equals(clientId)) {
                 clientSecret = fetchProductSecretByClientId(realm, clientId);
                 log.debug("Client secret resolved for client '{}'", clientId);
             }
@@ -311,7 +338,7 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
         Map<String, Object> config = new HashMap<>();
         config.put("clientId", clientId);
         config.put("enabled", true);
-        config.put("protocol", PROTOCOL_OPENID_CONNECT);
+        config.put("protocol", keycloakProtocol);
 
         if (isPublicClient) {
             config.put("publicClient", true);
@@ -595,7 +622,7 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
 
     private void registerRoleInProjectManager(String realm, String clientId, RoleCreationRequest role) {
         try {
-            WebClient pmWebClient = WebClient.builder().baseUrl(projectManagementBaseUrl).build();
+            WebClient pmWebClient = webClient.mutate().baseUrl(projectManagementBaseUrl).build();
             RoleRequest pmRequest = new RoleRequest();
             pmRequest.setRealmName(realm);
             pmRequest.setProductName(clientId);
@@ -604,7 +631,7 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             pmRequest.setHttpMethod(role.getHttpMethod());
 
             pmWebClient.post()
-                .uri("/project/roles/save-or-update")
+                .uri(roleSyncPath)
                 .bodyValue(pmRequest)
                 .retrieve()
                 .toBodilessEntity()
@@ -822,7 +849,7 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
 
     private String getRealmManagementClientId(String realm, String token) {
         log.debug("Fetching realm-management client ID for realm '{}'", realm);
-        String url = buildUrl("/admin/realms/" + realm + "/clients?clientId=" + REALM_MANAGEMENT_CLIENT);
+        String url = buildUrl("/admin/realms/" + realm + "/clients?clientId=" + realmManagementClient);
         HttpHeaders headers = createBearerHeaders(token);
 
         try {
@@ -942,8 +969,8 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
 
     private Map<String, Object> buildAdminUserPayload(String adminPassword) {
         Map<String, Object> userPayload = new HashMap<>();
-        userPayload.put("username", ADMIN_USERNAME);
-        userPayload.put("email", ADMIN_EMAIL);
+        userPayload.put("username", defaultAdminUsername);
+        userPayload.put("email", defaultAdminEmail);
         userPayload.put("firstName", "Admin");
         userPayload.put("lastName", "User");
         userPayload.put("enabled", true);
@@ -959,7 +986,7 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
         Map<String, Object> body = new HashMap<>();
         body.put("clientId", clientId);
         body.put("enabled", true);
-        body.put("protocol", PROTOCOL_OPENID_CONNECT);
+        body.put("protocol", keycloakProtocol);
         body.put("publicClient", false);
         body.put("clientAuthenticatorType", "client-secret");
         body.put("directAccessGrantsEnabled", true);
@@ -984,9 +1011,9 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
 
     private void increaseTokenTiming(String realm, String token) {
         Map<String, Object> tokenConfig = Map.of(
-            "accessTokenLifespan", TOKEN_LIFESPAN_SECONDS,
-            "ssoSessionIdleTimeout", SSO_SESSION_IDLE_TIMEOUT,
-            "ssoSessionMaxLifespan", SSO_SESSION_MAX_LIFESPAN);
+            "accessTokenLifespan", accessTokenLifespanSeconds,
+            "ssoSessionIdleTimeout", ssoSessionIdleTimeoutSeconds,
+            "ssoSessionMaxLifespan", ssoSessionMaxLifespanSeconds);
 
         try {
             webClient.put()
@@ -1128,7 +1155,7 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
      * Generate a standardized repository name from realm, user, and client name
      */
     private static String generateRepositoryName(String realmName, String adminUsername, String clientName) {
-        String adminPart = adminUsername != null ? adminUsername : "admin";
+        String adminPart = adminUsername != null ? adminUsername : DEFAULT_ADMIN_USERNAME_FALLBACK;
         return String.format("%s-%s-%s", realmName, adminPart, clientName).toLowerCase();
     }
 
@@ -1136,7 +1163,7 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
      * Call Product Manager microservice to provision repository with uploaded code
      */
     private void provisionRepositoryViaProductManager(String repoName, Path codePath) throws IOException {
-        String provisionUrl = projectManagementBaseUrl + "/project/provision/upload";
+        String provisionUrl = projectManagementBaseUrl + provisionUploadPath;
         
         log.info("Provisioning repository '{}' via Product Manager at {}", repoName, provisionUrl);
         
@@ -1172,11 +1199,16 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
      */
     private void callProductManagerProvisioning(String url, String repoName, Path zipFile) throws IOException {
         log.debug("Calling Product Manager endpoint: POST {}", url);
+        long zipSizeBytes = Files.size(zipFile);
+        double zipSizeMb = zipSizeBytes / (1024.0 * 1024.0);
+        log.info("Uploading ZIP for repo '{}' to Product Manager (size: {} bytes / {} MB)",
+                repoName, zipSizeBytes, String.format("%.2f", zipSizeMb));
         
         try {
             // Build multipart form data
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+            headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
             
             LinkedMultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
             body.add("repoName", repoName);
@@ -1210,7 +1242,19 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             } else {
                 throw new RuntimeException("Product Manager returned empty response");
             }
-            
+        } catch (ResourceAccessException e) {
+            String enhancedMessage = "Failed to upload ZIP to Product Manager for repo '" + repoName +
+                    "' (ZIP size: " + String.format("%.2f", zipSizeMb) + " MB). " +
+                    "This usually indicates Product Manager rejected the multipart request (size/connector limits) " +
+                    "or closed the connection during upload.";
+            log.error("REST call to Product Manager failed: {}", enhancedMessage, e);
+            throw new IOException(enhancedMessage, e);
+        } catch (HttpStatusCodeException e) {
+            String responseBody = e.getResponseBodyAsString();
+            String enhancedMessage = "Product Manager returned HTTP " + e.getStatusCode().value() +
+                    " for repo '" + repoName + "'. Response body: " + responseBody;
+            log.error("REST call to Product Manager failed: {}", enhancedMessage, e);
+            throw new IOException(enhancedMessage, e);
         } catch (Exception e) {
             log.error("REST call to Product Manager failed: {}", e.getMessage(), e);
             throw new IOException("Failed to call Product Manager: " + e.getMessage(), e);

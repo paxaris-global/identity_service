@@ -1,2 +1,3 @@
 com\paxaris\identity_service\IdentityServiceApplicationTests.class
+com\paxaris\identity_service\config\CorrelationIdFilterTest.class
 com\paxaris\identity_service\config\KeycloakRealmAndClientRoleConverterTest.class

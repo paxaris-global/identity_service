@@ -1,48 +1,87 @@
 package com.paxaris.identity_service.exception;
 
+import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.web.context.request.WebRequest;
 
 import java.time.LocalDateTime;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
+import static com.paxaris.identity_service.config.CorrelationIdFilter.CORRELATION_ID_HEADER;
+import static com.paxaris.identity_service.config.CorrelationIdFilter.CORRELATION_ID_KEY;
+
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    // Handle AccessDeniedException
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<Map<String, Object>> handleAccessDenied(
             AccessDeniedException ex,
-            WebRequest request) {
+            HttpServletRequest request) {
 
-        Map<String, Object> error = new HashMap<>();
-        error.put("timestamp", LocalDateTime.now());
-        error.put("status", HttpStatus.FORBIDDEN.value());
-        error.put("error", "Access Denied");
-        error.put("message", ex.getMessage());
-        error.put("path", request.getDescription(false).replace("uri=", ""));
+        String correlationId = resolveCorrelationId(request);
+        log.warn("AccessDeniedException correlationId={} path={} message={}",
+                correlationId, request.getRequestURI(), ex.getMessage());
 
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
+        return buildErrorResponse(
+                HttpStatus.FORBIDDEN,
+                "Access Denied",
+                ex.getMessage(),
+                request,
+                correlationId
+        );
     }
 
-    // Handle any other Exception
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGenericException(
             Exception ex,
-            WebRequest request) {
+            HttpServletRequest request) {
 
-        Map<String, Object> error = new HashMap<>();
-        error.put("timestamp", LocalDateTime.now());
-        error.put("status", HttpStatus.INTERNAL_SERVER_ERROR.value());
-        error.put("error", "Internal Server Error");
-        error.put("message", ex.getMessage());
-        error.put("path", request.getDescription(false).replace("uri=", ""));
+        String correlationId = resolveCorrelationId(request);
+        log.error("UnhandledException correlationId={} path={} message={}",
+                correlationId, request.getRequestURI(), ex.getMessage(), ex);
 
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        return buildErrorResponse(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "Internal Server Error",
+                ex.getMessage(),
+                request,
+                correlationId
+        );
+    }
+
+    private ResponseEntity<Map<String, Object>> buildErrorResponse(HttpStatus status,
+                                                                    String error,
+                                                                    String message,
+                                                                    HttpServletRequest request,
+                                                                    String correlationId) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("timestamp", LocalDateTime.now());
+        payload.put("status", status.value());
+        payload.put("error", error);
+        payload.put("message", message);
+        payload.put("path", request.getRequestURI());
+        payload.put("correlationId", correlationId);
+        return ResponseEntity.status(status).body(payload);
+    }
+
+    private String resolveCorrelationId(HttpServletRequest request) {
+        String correlationId = request.getHeader(CORRELATION_ID_HEADER);
+        if (StringUtils.hasText(correlationId)) {
+            return correlationId;
+        }
+
+        Object correlationAttr = request.getAttribute(CORRELATION_ID_KEY);
+        if (correlationAttr != null && StringUtils.hasText(correlationAttr.toString())) {
+            return correlationAttr.toString();
+        }
+
+        return "N/A";
     }
 }

@@ -1,8 +1,10 @@
 package com.paxaris.identity_service.service;
 
 import com.nimbusds.jwt.JWTParser;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.oauth2.jwt.*;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.text.ParseException;
 import java.util.Map;
@@ -17,6 +19,12 @@ public class DynamicJwtDecoder implements JwtDecoder {
 
     private final Map<String, JwtDecoder> decoderCache = new ConcurrentHashMap<>();
 
+    @Value("${identity.jwt.issuer-host-rewrite.from:localhost}")
+    private String issuerHostRewriteFrom;
+
+    @Value("${identity.jwt.issuer-host-rewrite.to:keycloak-server}")
+    private String issuerHostRewriteTo;
+
     @Override
     public Jwt decode(String token) throws JwtException {
         try {
@@ -26,9 +34,11 @@ public class DynamicJwtDecoder implements JwtDecoder {
                 throw new JwtException("Issuer (iss) claim missing in token");
             }
 
-            // Replace localhost with docker service hostname
-            if (issuer.contains("localhost")) {
-                issuer = issuer.replace("localhost", "keycloak-server");
+            // Rewrite issuer host when needed (for local vs container hostname differences)
+            if (StringUtils.hasText(issuerHostRewriteFrom)
+                    && StringUtils.hasText(issuerHostRewriteTo)
+                    && issuer.contains(issuerHostRewriteFrom)) {
+                issuer = issuer.replace(issuerHostRewriteFrom, issuerHostRewriteTo);
             }
 
             return decoderCache

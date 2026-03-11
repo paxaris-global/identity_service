@@ -25,6 +25,7 @@ com\paxaris\identity_service\service\impl\KeycloakProductServiceImpl$11.class
 com\paxaris\identity_service\service\impl\KeycloakProductServiceImpl$8.class
 com\paxaris\identity_service\exception\GlobalExceptionHandler.class
 com\paxaris\identity_service\service\impl\KeycloakProductServiceImpl$3.class
+com\paxaris\identity_service\config\CorrelationIdFilter.class
 com\paxaris\identity_service\service\impl\KeycloakProductServiceImpl$4.class
 com\paxaris\identity_service\service\impl\KeycloakProductServiceImpl$14.class
 com\paxaris\identity_service\dto\RoleRequest.class

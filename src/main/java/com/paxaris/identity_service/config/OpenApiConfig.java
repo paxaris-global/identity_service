@@ -10,6 +10,7 @@ import io.swagger.v3.oas.models.info.Contact;
 import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.info.License;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -24,34 +25,53 @@ import org.springframework.context.annotation.Configuration;
 )
 public class OpenApiConfig {
 
+        @Value("${springdoc.info.title:Identity Service API}")
+        private String apiTitle;
+
+        @Value("${springdoc.info.version:1.0.0}")
+        private String apiVersion;
+
+        @Value("${springdoc.info.description:Identity Service provides authentication and authorization APIs using Keycloak}")
+        private String apiDescription;
+
+        @Value("${springdoc.info.contact.name:Paxaris Global}")
+        private String contactName;
+
+        @Value("${springdoc.info.contact.url:https://paxarisglobal.com}")
+        private String contactUrl;
+
+        @Value("${springdoc.info.contact.email:support@paxarisglobal.com}")
+        private String contactEmail;
+
+        @Value("${springdoc.info.license.name:Apache 2.0}")
+        private String licenseName;
+
+        @Value("${springdoc.info.license.url:https://www.apache.org/licenses/LICENSE-2.0.html}")
+        private String licenseUrl;
+
+        @Value("${springdoc.external-docs.description:Keycloak Documentation}")
+        private String externalDocsDescription;
+
+        @Value("${springdoc.external-docs.url:https://www.keycloak.org/docs/latest/}")
+        private String externalDocsUrl;
+
     @Bean
     public OpenAPI customOpenAPI() {
         return new OpenAPI()
                 .info(new Info()
-                        .title("Identity Service API")
-                        .version("1.0.0")
-                        .description("""
-                                Identity Service provides comprehensive authentication and authorization management
-                                using Keycloak. It supports user management, role assignment, realm management, and
-                                product/client configuration.
-                                
-                                ## Key Features:
-                                - User registration and authentication
-                                - Realm and product management
-                                - Role creation and assignment
-                                - JWT token generation and validation
-                                - Multi-tenant support
-                                """)
+                        .title(apiTitle)
+                        .version(apiVersion)
+                        .description(apiDescription)
                         .contact(new Contact()
-                                .name("Paxaris Global")
-                                .url("https://paxarisglobal.com")
-                                .email("support@paxarisglobal.com"))
+                                .name(contactName)
+                                .url(contactUrl)
+                                .email(contactEmail))
                         .license(new License()
-                                .name("Apache 2.0")
-                                .url("https://www.apache.org/licenses/LICENSE-2.0.html")))
+                                .name(licenseName)
+                                .url(licenseUrl)))
                 .externalDocs(new ExternalDocumentation()
-                        .description("Keycloak Documentation")
-                        .url("https://www.keycloak.org/docs/latest/"))
+                        .description(externalDocsDescription)
+                        .url(externalDocsUrl))
                 .addSecurityItem(new SecurityRequirement().addList("bearer"))
                 .components(new Components()
                         .addSecuritySchemes("bearer",

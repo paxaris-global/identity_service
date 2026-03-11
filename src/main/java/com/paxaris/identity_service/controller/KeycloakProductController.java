@@ -38,7 +38,7 @@ import java.util.*;
 @Tag(name = "Identity Service", description = "APIs for authentication, authorization, and user/product management with Keycloak")
 public class KeycloakProductController {
 
-    private final RestTemplate restTemplate = new RestTemplate();
+        private final RestTemplate restTemplate;
     private final DynamicJwtDecoder jwtDecoder;
     private final KeycloakProductService productService;
     private final ObjectMapper objectMapper;
@@ -340,9 +340,7 @@ public class KeycloakProductController {
             // Product = azp (Authorized Party)
             String product = claims.getOrDefault("azp", "").toString();
 
-            // Debug log
-            System.out
-                    .println("🔹 Token validated. Realm: " + realm + ", Product: " + product + ", Roles: " + allRoles);
+            log.debug("Token validated realm={} product={} roles={}", realm, product, allRoles);
 
             return ResponseEntity.ok(Map.of(
                     "status", "VALID",
@@ -351,9 +349,8 @@ public class KeycloakProductController {
                     "azp", product, // ✅ added: include AZP in response
                     "roles", allRoles));
 
-        } catch (Exception e) {
-            System.err.println("❌ Token validation failed: " + e.getMessage());
-            e.printStackTrace();
+                } catch (Exception e) {
+                        log.warn("Token validation failed: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of(
                             "status", "INVALID",
