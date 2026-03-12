@@ -1,4 +1,4 @@
 -------------------------------------------------------------------------------
 Test set: com.paxaris.identity_service.IdentityServiceApplicationTests
 -------------------------------------------------------------------------------
-Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 50.24 s -- in com.paxaris.identity_service.IdentityServiceApplicationTests
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 24.13 s -- in com.paxaris.identity_service.IdentityServiceApplicationTests
