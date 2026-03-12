@@ -244,7 +244,10 @@ public class KeycloakProductController {
 
             return ResponseEntity.ok(response);
 
-        } catch (Exception e) {
+                } catch (HttpClientErrorException.Unauthorized e) {
+                        logger.warn("Invalid credentials for realm {}: {}", realm, e.getMessage());
+                        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials", e);
+                } catch (Exception e) {
             logger.error("❌ Login failed: {}", e.getMessage(), e);
                         throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                                         "Login failed: " + e.getMessage(), e);
@@ -387,7 +390,7 @@ public class KeycloakProductController {
     )
     @ApiResponses(value = {
             @ApiResponse(
-                    responseCode = "200",
+                    responseCode = "201",
                     description = "Signup completed successfully",
                     content = @Content(
                             mediaType = "application/json",
@@ -429,6 +432,14 @@ public class KeycloakProductController {
                     )
             ),
             @ApiResponse(
+                    responseCode = "409",
+                    description = "Conflict - realm or admin product already exists",
+                    content = @Content(
+                            mediaType = "application/json",
+                            schema = @Schema(implementation = SignupStatus.class)
+                    )
+            ),
+            @ApiResponse(
                     responseCode = "500",
                     description = "Provisioning failed",
                     content = @Content(
@@ -460,7 +471,15 @@ public class KeycloakProductController {
                     request.getAdminPassword()
             );
 
-            return ResponseEntity.ok(status);
+                        if ("SUCCESS".equalsIgnoreCase(status.getStatus())) {
+                                return ResponseEntity.status(HttpStatus.CREATED).body(status);
+                        }
+
+                        if (isConflictStatus(status)) {
+                                return ResponseEntity.status(HttpStatus.CONFLICT).body(status);
+                        }
+
+                        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(status);
 
         } catch (IllegalArgumentException e) {
 
@@ -607,8 +626,16 @@ public class KeycloakProductController {
     @SecurityRequirement(name = "bearer")
     @ApiResponses(value = {
             @ApiResponse(
-                    responseCode = "200",
+                    responseCode = "201",
                     description = "Product created and deployed successfully",
+                    content = @Content(
+                            mediaType = "application/json",
+                            schema = @Schema(implementation = SignupStatus.class)
+                    )
+            ),
+            @ApiResponse(
+                    responseCode = "409",
+                    description = "Conflict - product/client already exists",
                     content = @Content(
                             mediaType = "application/json",
                             schema = @Schema(implementation = SignupStatus.class)
@@ -677,11 +704,20 @@ public class KeycloakProductController {
                     username
             );
 
-            return ResponseEntity.ok(status);
+                        return ResponseEntity.status(HttpStatus.CREATED).body(status);
 
         } catch (Exception e) {
             status.setStatus("FAILED");
             status.setMessage(e.getMessage());
+
+                        if (isConflictException(e)) {
+                                return ResponseEntity.status(HttpStatus.CONFLICT).body(status);
+                        }
+
+                        if (isServiceUnavailableException(e)) {
+                                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(status);
+                        }
+
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(status);
         }
     }
@@ -695,6 +731,57 @@ public class KeycloakProductController {
             return "system";
         }
     }
+
+        private boolean isConflictStatus(SignupStatus status) {
+                if (status == null) {
+                        return false;
+                }
+                String message = status.getMessage();
+                return message != null &&
+                                (message.toLowerCase().contains("already exists") || message.toLowerCase().contains("conflict"));
+        }
+
+        private boolean isConflictException(Throwable throwable) {
+                Throwable current = throwable;
+                while (current != null) {
+                        if (current instanceof HttpClientErrorException clientError
+                                        && clientError.getStatusCode() == HttpStatus.CONFLICT) {
+                                return true;
+                        }
+
+                        String message = current.getMessage();
+                        if (message != null) {
+                                String normalized = message.toLowerCase();
+                                if (normalized.contains("already exists") || normalized.contains("409") || normalized.contains("conflict")) {
+                                        return true;
+                                }
+                        }
+                        current = current.getCause();
+                }
+                return false;
+        }
+
+        private boolean isServiceUnavailableException(Throwable throwable) {
+                Throwable current = throwable;
+                while (current != null) {
+                        if (current instanceof org.springframework.web.client.HttpStatusCodeException statusCodeException
+                                        && statusCodeException.getStatusCode() == HttpStatus.SERVICE_UNAVAILABLE) {
+                                return true;
+                        }
+
+                        String message = current.getMessage();
+                        if (message != null) {
+                                String normalized = message.toLowerCase();
+                                if (normalized.contains("service unavailable")
+                                                || normalized.contains("github_token missing")
+                                                || normalized.contains("configuration error")) {
+                                        return true;
+                                }
+                        }
+                        current = current.getCause();
+                }
+                return false;
+        }
 
 
 

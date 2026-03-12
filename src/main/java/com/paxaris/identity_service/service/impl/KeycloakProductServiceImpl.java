@@ -317,7 +317,7 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             handleProvisioningFailure(status, e);
             cleanupDirectory(backendPath);
             cleanupDirectory(frontendPath);
-            throw new RuntimeException("Product provisioning failed", e);
+            throw new RuntimeException("Product provisioning failed: " + e.getMessage(), e);
         }
     }
 
@@ -336,6 +336,9 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             }
             log.info("Product '{}' created successfully with UUID: {}", clientId, clientUUID);
             return clientUUID;
+        } catch (HttpClientErrorException.Conflict e) {
+            log.warn("Product '{}' already exists in realm '{}': {}", clientId, realm, e.getResponseBodyAsString());
+            throw new RuntimeException("Product already exists", e);
         } catch (Exception e) {
             log.error("Failed to create product '{}': {}", clientId, e.getMessage());
             throw new RuntimeException("Failed to create product", e);
@@ -1013,6 +1016,9 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             ensureClientSecret(realm, clientUUID, token);
             log.info("Admin product '{}' created successfully with UUID: {}", clientId, clientUUID);
             return clientUUID;
+        } catch (HttpClientErrorException.Conflict e) {
+            log.warn("Admin product '{}' already exists in realm '{}': {}", clientId, realm, e.getResponseBodyAsString());
+            throw new RuntimeException("Admin product already exists", e);
         } catch (Exception e) {
             log.error("Failed to create admin product: {}", e.getMessage());
             throw new RuntimeException("Failed to create admin product", e);
