@@ -17,6 +17,8 @@ public interface KeycloakProductService {
         // Token operations
         Map<String, Object> getMyRealmToken(String username, String password, String productId, String realm);
 
+        Map<String, Object> refreshMyRealmToken(String refreshToken, String productId, String realm);
+
         // Product redirect URL
         String getProductRedirectUrl(String realm, String productId);
 

@@ -234,6 +234,9 @@ public class KeycloakProductController {
             response.put("access_token", keycloakToken);
             response.put("expires_in", tokenMap.get("expires_in"));
             response.put("token_type", tokenMap.get("token_type"));
+            response.put("refresh_token", tokenMap.get("refresh_token"));
+            response.put("refresh_expires_in", tokenMap.get("refresh_expires_in"));
+            response.put("scope", tokenMap.get("scope"));
             response.put("azp", azp);
             response.put("roles", allRoles);
             response.put("realm", extractedRealm);
@@ -253,6 +256,39 @@ public class KeycloakProductController {
                                         "Login failed: " + e.getMessage(), e);
         }
     }
+
+        @PostMapping("/{realm}/refresh")
+        public ResponseEntity<Map<String, Object>> refreshToken(
+                        @PathVariable String realm,
+                        @org.springframework.web.bind.annotation.RequestBody Map<String, String> payload) {
+                String refreshToken = payload.get("refresh_token");
+                String productId = payload.getOrDefault("product_id", payload.getOrDefault("client_id", defaultLoginProductId));
+
+                if (refreshToken == null || refreshToken.isBlank()) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "refresh_token is required");
+                }
+
+                try {
+                        Map<String, Object> tokenMap = productService.refreshMyRealmToken(refreshToken, productId, realm);
+
+                        Map<String, Object> response = new HashMap<>();
+                        response.put("access_token", tokenMap.get("access_token"));
+                        response.put("expires_in", tokenMap.get("expires_in"));
+                        response.put("token_type", tokenMap.get("token_type"));
+                        response.put("refresh_token", tokenMap.getOrDefault("refresh_token", refreshToken));
+                        response.put("refresh_expires_in", tokenMap.get("refresh_expires_in"));
+                        response.put("scope", tokenMap.get("scope"));
+
+                        return ResponseEntity.ok(response);
+                } catch (HttpClientErrorException.Unauthorized e) {
+                        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid or expired refresh token", e);
+                } catch (IllegalArgumentException e) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
+                } catch (Exception e) {
+                        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Refresh token failed", e);
+                }
+        }
+
     @GetMapping("/validate")
     @Operation(
             summary = "Validate JWT Token",

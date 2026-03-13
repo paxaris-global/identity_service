@@ -50,6 +50,7 @@ import java.util.stream.Collectors;
 public class KeycloakProductServiceImpl implements KeycloakProductService {
 
     private static final String GRANT_TYPE_PASSWORD = "password";
+    private static final String GRANT_TYPE_REFRESH_TOKEN = "refresh_token";
 
     private final KeycloakConfig config;
     private final RestTemplate restTemplate;
@@ -169,6 +170,39 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
         } catch (Exception e) {
             log.error("Failed to get realm token for user '{}': {}", username, e.getMessage());
             throw new RuntimeException("Failed to get realm token", e);
+        }
+    }
+
+    @Override
+    public Map<String, Object> refreshMyRealmToken(String refreshToken, String clientId, String realm) {
+        log.debug("Refreshing token for realm '{}' and product '{}'", realm, clientId);
+
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw new IllegalArgumentException("Refresh token is required");
+        }
+
+        try {
+            String clientSecret = null;
+            if (!adminCliClient.equals(clientId)) {
+                clientSecret = fetchProductSecretByClientId(realm, clientId);
+            }
+
+            String tokenUrl = buildUrl("/realms/" + realm + "/protocol/openid-connect/token");
+            MultiValueMap<String, String> body =
+                buildRefreshTokenRequestBody(clientId, refreshToken, clientSecret);
+
+            return executeTokenRequest(tokenUrl, body);
+        } catch (HttpClientErrorException e) {
+            log.warn(
+                "Refresh token request failed for realm '{}' and product '{}': {}",
+                realm,
+                clientId,
+                e.getResponseBodyAsString()
+            );
+            throw new RuntimeException("Refresh token failed: " + e.getResponseBodyAsString(), e);
+        } catch (Exception e) {
+            log.error("Failed to refresh token for realm '{}' and product '{}': {}", realm, clientId, e.getMessage());
+            throw new RuntimeException("Failed to refresh token", e);
         }
     }
 
@@ -910,7 +944,7 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             executeCreateClientStep(status, realm, clientId, masterToken);
             String userId = executeCreateAdminUserStep(status, realm, adminPassword, masterToken);
             executeAssignAdminRolesStep(status, realm, userId, masterToken);
-            increaseTokenTiming(realm, masterToken);
+            
 
             status.setStatus("SUCCESS");
             status.setMessage("Signup completed successfully");
@@ -1025,29 +1059,6 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
         }
     }
 
-    private void increaseTokenTiming(String realm, String token) {
-        Map<String, Object> tokenConfig = Map.of(
-            "accessTokenLifespan", accessTokenLifespanSeconds,
-            "ssoSessionIdleTimeout", ssoSessionIdleTimeoutSeconds,
-            "ssoSessionMaxLifespan", ssoSessionMaxLifespanSeconds);
-
-        try {
-            webClient.put()
-                .uri(buildUrl("/admin/realms/" + realm))
-                .header("Authorization", "Bearer " + token)
-                .header("Content-Type", "application/json")
-                .bodyValue(tokenConfig)
-                .retrieve()
-                .toBodilessEntity()
-                .block();
-
-            log.debug("Token timing updated for realm: {}", realm);
-        } catch (Exception e) {
-            log.warn("Failed to update token timing for realm '{}': {}", realm, e.getMessage());
-        }
-    }
-
-
     // ==================== HTTP REQUEST HELPERS ====================
 
     private MultiValueMap<String, String> buildTokenRequestBody(String grantType, String clientId,
@@ -1061,6 +1072,21 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
         }
         body.add("username", username);
         body.add("password", password);
+        return body;
+    }
+
+    private MultiValueMap<String, String> buildRefreshTokenRequestBody(
+        String clientId,
+        String refreshToken,
+        String clientSecret
+    ) {
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("grant_type", GRANT_TYPE_REFRESH_TOKEN);
+        body.add("client_id", clientId);
+        if (clientSecret != null && !clientSecret.isBlank()) {
+            body.add("client_secret", clientSecret);
+        }
+        body.add("refresh_token", refreshToken);
         return body;
     }
 
