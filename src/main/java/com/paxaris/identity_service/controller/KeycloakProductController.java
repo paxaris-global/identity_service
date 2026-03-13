@@ -229,23 +229,34 @@ public class KeycloakProductController {
             String product = claims.getOrDefault("azp", "").toString();
             String azp = product;
 
-            // Return token + custom data
-            Map<String, Object> response = new HashMap<>();
-            response.put("access_token", keycloakToken);
-            response.put("expires_in", tokenMap.get("expires_in"));
-            response.put("token_type", tokenMap.get("token_type"));
-            response.put("refresh_token", tokenMap.get("refresh_token"));
-            response.put("refresh_expires_in", tokenMap.get("refresh_expires_in"));
-            response.put("scope", tokenMap.get("scope"));
-            response.put("azp", azp);
-            response.put("roles", allRoles);
-            response.put("realm", extractedRealm);
-            response.put("product", product);
-            response.put("redirect_url", redirectUrl);
 
-            logger.info("✅ Returning login response with roles/realm/product");
+                        // Admin detection: at least 3 of 5 main admin roles or any role containing 'admin'
+                        Set<String> normalizedRoles = allRoles.stream().map(r -> r.trim().toLowerCase()).collect(java.util.stream.Collectors.toSet());
+                        String[] adminRoles = {"create-client", "impersonation", "manage-clients", "manage-realm", "manage-users"};
+                        int adminMatch = 0;
+                        for (String role : adminRoles) {
+                                if (normalizedRoles.contains(role)) adminMatch++;
+                        }
+                        boolean isAdmin = adminMatch >= 3 || normalizedRoles.stream().anyMatch(r -> r.contains("admin"));
 
-            return ResponseEntity.ok(response);
+                        // Return token + custom data
+                        Map<String, Object> response = new HashMap<>();
+                        response.put("access_token", keycloakToken);
+                        response.put("expires_in", tokenMap.get("expires_in"));
+                        response.put("token_type", tokenMap.get("token_type"));
+                        response.put("refresh_token", tokenMap.get("refresh_token"));
+                        response.put("refresh_expires_in", tokenMap.get("refresh_expires_in"));
+                        response.put("scope", tokenMap.get("scope"));
+                        response.put("azp", azp);
+                        response.put("roles", allRoles);
+                        response.put("realm", extractedRealm);
+                        response.put("product", product);
+                        response.put("redirect_url", redirectUrl);
+                        response.put("isAdmin", isAdmin);
+
+                        logger.info("✅ Returning login response with roles/realm/product, isAdmin={}", isAdmin);
+
+                        return ResponseEntity.ok(response);
 
                 } catch (HttpClientErrorException.Unauthorized e) {
                         logger.warn("Invalid credentials for realm {}: {}", realm, e.getMessage());
