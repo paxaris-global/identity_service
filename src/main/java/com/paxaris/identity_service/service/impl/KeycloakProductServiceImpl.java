@@ -944,10 +944,17 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             String clientUUID = executeCreateClientStep(status, realm, clientId, masterToken);
 
             // Ensure 'admin' role exists for the admin product/client before assigning
-            RoleCreationRequest adminRole = new RoleCreationRequest();
-            adminRole.setName("admin");
-            adminRole.setDescription("Admin role for product");
-            createRole(realm, clientUUID, adminRole, masterToken);
+            RoleCreationRequest adminProductRole = new RoleCreationRequest();
+            adminProductRole.setName("admin");
+            adminProductRole.setDescription("Admin role for product");
+            createRole(realm, clientUUID, adminProductRole, masterToken);
+
+            // Ensure 'admin' role exists for the realm-management client before assignment
+            String realmManagementClientId = getRealmManagementClientId(realm, masterToken);
+            RoleCreationRequest adminRealmRole = new RoleCreationRequest();
+            adminRealmRole.setName("admin");
+            adminRealmRole.setDescription("Admin role for realm management");
+            createRole(realm, realmManagementClientId, adminRealmRole, masterToken);
 
             String userId = executeCreateAdminUserStep(status, realm, adminPassword, masterToken);
             executeAssignAdminRolesStep(status, realm, userId, masterToken);
