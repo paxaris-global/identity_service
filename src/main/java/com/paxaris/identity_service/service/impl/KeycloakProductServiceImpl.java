@@ -941,10 +941,16 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
         try {
             String masterToken = executeMasterTokenStep(status);
             executeCreateRealmStep(status, realm, masterToken);
-            executeCreateClientStep(status, realm, clientId, masterToken);
+            String clientUUID = executeCreateClientStep(status, realm, clientId, masterToken);
+
+            // Ensure 'admin' role exists for the admin product/client before assigning
+            RoleCreationRequest adminRole = new RoleCreationRequest();
+            adminRole.setName("admin");
+            adminRole.setDescription("Admin role for product");
+            createRole(realm, clientUUID, adminRole, masterToken);
+
             String userId = executeCreateAdminUserStep(status, realm, adminPassword, masterToken);
             executeAssignAdminRolesStep(status, realm, userId, masterToken);
-            
 
             status.setStatus("SUCCESS");
             status.setMessage("Signup completed successfully");
