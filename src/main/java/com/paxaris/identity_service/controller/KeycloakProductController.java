@@ -232,7 +232,7 @@ public class KeycloakProductController {
 
                         // Admin detection: at least 3 of 5 main admin roles or any role containing 'admin'
                         Set<String> normalizedRoles = allRoles.stream().map(r -> r.trim().toLowerCase()).collect(java.util.stream.Collectors.toSet());
-                        String[] adminRoles = {"create-client", "impersonation", "manage-clients", "manage-realm", "manage-users"};
+                        String[] adminRoles = {"create-client", "impersonation", "manage-clients", "manage-realm", "manage-users", "admin"};
                         int adminMatch = 0;
                         for (String role : adminRoles) {
                                 if (normalizedRoles.contains(role)) adminMatch++;
