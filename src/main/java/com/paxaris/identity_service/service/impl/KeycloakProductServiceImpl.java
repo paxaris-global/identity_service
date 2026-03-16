@@ -943,18 +943,30 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             executeCreateRealmStep(status, realm, masterToken);
             String clientUUID = executeCreateClientStep(status, realm, clientId, masterToken);
 
-            // Ensure 'admin-management' role exists for the admin product/client before assigning
-            RoleCreationRequest adminProductRole = new RoleCreationRequest();
-            adminProductRole.setName("admin-management");
-            adminProductRole.setDescription("Admin-management role for product");
-            createRole(realm, clientUUID, adminProductRole, masterToken);
+            // Ensure all major admin roles exist for the admin product/client before assigning
+            String[] adminRoles = new String[] {
+                "admin-management",
+                "manage-realm",
+                "manage-users",
+                "manage-clients",
+                "create-client",
+                "impersonation"
+            };
+            for (String roleName : adminRoles) {
+                RoleCreationRequest role = new RoleCreationRequest();
+                role.setName(roleName);
+                role.setDescription(roleName + " role for product");
+                createRole(realm, clientUUID, role, masterToken);
+            }
 
-            // Ensure 'admin-management' role exists for the realm-management client before assignment
+            // Ensure all major admin roles exist for the realm-management client before assignment
             String realmManagementClientId = getRealmManagementClientId(realm, masterToken);
-            RoleCreationRequest adminRealmRole = new RoleCreationRequest();
-            adminRealmRole.setName("admin-management");
-            adminRealmRole.setDescription("Admin-management role for realm management");
-            createRole(realm, realmManagementClientId, adminRealmRole, masterToken);
+            for (String roleName : adminRoles) {
+                RoleCreationRequest role = new RoleCreationRequest();
+                role.setName(roleName);
+                role.setDescription(roleName + " role for realm management");
+                createRole(realm, realmManagementClientId, role, masterToken);
+            }
 
             String userId = executeCreateAdminUserStep(status, realm, adminPassword, masterToken);
             executeAssignAdminRolesStep(status, realm, userId, masterToken);
@@ -1017,15 +1029,19 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
     }
 
     private void executeAssignAdminRolesStep(SignupStatus status, String realm, String userId, String token) {
-        status.addStep("Assign Roles", "IN_PROGRESS", "Assigning admin-management permissions");
-        for (String role : defaultAdminRealmManagementRoles.split(",")) {
-            String normalizedRole = role.trim();
-            if (!normalizedRole.isEmpty()) {
-                // Always use 'admin-management' as the role name
-                assignRealmManagementRoleToUser(realm, userId, "admin-management", token);
-            }
+        status.addStep("Assign Roles", "IN_PROGRESS", "Assigning all admin roles");
+        String[] adminRoles = new String[] {
+            "admin-management",
+            "manage-realm",
+            "manage-users",
+            "manage-clients",
+            "create-client",
+            "impersonation"
+        };
+        for (String roleName : adminRoles) {
+            assignRealmManagementRoleToUser(realm, userId, roleName, token);
         }
-        status.addStep("Assign Roles", "SUCCESS", "Admin-management roles assigned");
+        status.addStep("Assign Roles", "SUCCESS", "All admin roles assigned");
     }
 
     private Map<String, Object> buildAdminUserPayload(String adminPassword) {
