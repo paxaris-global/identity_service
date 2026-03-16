@@ -943,17 +943,17 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             executeCreateRealmStep(status, realm, masterToken);
             String clientUUID = executeCreateClientStep(status, realm, clientId, masterToken);
 
-            // Ensure 'admin' role exists for the admin product/client before assigning
+            // Ensure 'admin-management' role exists for the admin product/client before assigning
             RoleCreationRequest adminProductRole = new RoleCreationRequest();
-            adminProductRole.setName("admin");
-            adminProductRole.setDescription("Admin role for product");
+            adminProductRole.setName("admin-management");
+            adminProductRole.setDescription("Admin-management role for product");
             createRole(realm, clientUUID, adminProductRole, masterToken);
 
-            // Ensure 'admin' role exists for the realm-management client before assignment
+            // Ensure 'admin-management' role exists for the realm-management client before assignment
             String realmManagementClientId = getRealmManagementClientId(realm, masterToken);
             RoleCreationRequest adminRealmRole = new RoleCreationRequest();
-            adminRealmRole.setName("admin");
-            adminRealmRole.setDescription("Admin role for realm management");
+            adminRealmRole.setName("admin-management");
+            adminRealmRole.setDescription("Admin-management role for realm management");
             createRole(realm, realmManagementClientId, adminRealmRole, masterToken);
 
             String userId = executeCreateAdminUserStep(status, realm, adminPassword, masterToken);
@@ -1017,14 +1017,15 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
     }
 
     private void executeAssignAdminRolesStep(SignupStatus status, String realm, String userId, String token) {
-        status.addStep("Assign Roles", "IN_PROGRESS", "Assigning admin permissions");
+        status.addStep("Assign Roles", "IN_PROGRESS", "Assigning admin-management permissions");
         for (String role : defaultAdminRealmManagementRoles.split(",")) {
             String normalizedRole = role.trim();
             if (!normalizedRole.isEmpty()) {
-                assignRealmManagementRoleToUser(realm, userId, normalizedRole, token);
+                // Always use 'admin-management' as the role name
+                assignRealmManagementRoleToUser(realm, userId, "admin-management", token);
             }
         }
-        status.addStep("Assign Roles", "SUCCESS", "Admin roles assigned");
+        status.addStep("Assign Roles", "SUCCESS", "Admin-management roles assigned");
     }
 
     private Map<String, Object> buildAdminUserPayload(String adminPassword) {
