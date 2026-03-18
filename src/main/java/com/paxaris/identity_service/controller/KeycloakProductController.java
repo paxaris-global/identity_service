@@ -72,7 +72,7 @@ public class KeycloakProductController {
         return ResponseEntity.ok(response);
     }
 
-    // -----------------------------------get token-----------------------------------------------------------------------------------------
+    // -----------------------------------get tokens-----------------------------------------------------------------------------------------
     @PostMapping("/token")
     public ResponseEntity<Map<String, Object>> getToken(
             @RequestParam String realm,
