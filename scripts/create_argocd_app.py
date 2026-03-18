@@ -5,7 +5,7 @@ import requests
 import argparse
 
 def create_argocd_app(app_name, repo_url, path, namespace="argocd", dest_namespace="default"):
-        # Ensure app_name is RFC 1123 compliant (replace underscores with dashes)
+        # Ensure app_name is RFdC 1123 compliant (replace underscores with dashes)
         safe_app_name = app_name.replace('_', '-')
         app_yaml = f"""
 apiVersion: argoproj.io/v1alpha1
