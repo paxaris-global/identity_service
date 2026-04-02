@@ -61,7 +61,7 @@ public class KeycloakProductController {
 
     private static final Logger logger = LoggerFactory.getLogger(KeycloakProductController.class);
 
-    // ------------------- TOKEN
+    // ------------------- TOKEN-------
     @GetMapping("identity/master/login")
     public ResponseEntity<Map<String, String>> getMasterTokenInternally() {
         String token = productService.getMasterTokenInternally();
