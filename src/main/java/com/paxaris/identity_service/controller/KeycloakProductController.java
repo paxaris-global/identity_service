@@ -769,6 +769,42 @@ public class KeycloakProductController {
         }
     }
 
+    @PostMapping(
+            value = "{realm}/clients",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    @Operation(
+            summary = "Create Client (Backward Compatible)",
+            description = "Backward-compatible alias for /{realm}/products. Accepts legacy 'client' payload and maps it to product provisioning flow."
+    )
+    @SecurityRequirement(name = "bearer")
+    public ResponseEntity<SignupStatus> createClientLegacy(
+            @PathVariable String realm,
+            @RequestPart("client") Map<String, Object> clientRequest,
+            @RequestPart("backendZip") MultipartFile backendZip,
+            @RequestPart("frontendZip") MultipartFile frontendZip,
+            @RequestPart("frontendBaseUrl") String frontendBaseUrl,
+            @RequestHeader("Authorization") String authorizationHeader
+    ) {
+        Map<String, Object> productRequest = new HashMap<>();
+        Object clientId = clientRequest.get("clientId");
+        if (clientId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "clientId is required in client payload");
+        }
+
+        productRequest.put("productId", clientId.toString());
+        productRequest.put("publicClient", clientRequest.getOrDefault("publicClient", false));
+
+        return createProduct(
+                realm,
+                productRequest,
+                backendZip,
+                frontendZip,
+                frontendBaseUrl,
+                authorizationHeader
+        );
+    }
+
 
     private String extractUsernameFromToken(String token) {
         try {
