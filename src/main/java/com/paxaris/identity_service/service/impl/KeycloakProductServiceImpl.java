@@ -1228,7 +1228,15 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
      */
     private String generateRepositoryName(String realmName, String adminUsername, String productName) {
         String adminPart = (adminUsername != null && !adminUsername.isBlank()) ? adminUsername : defaultAdminUsername;
-        return String.format("%s-%s-%s", realmName, adminPart, productName).toLowerCase();
+        String rawName = String.format("%s-%s-%s", realmName, adminPart, productName).toLowerCase();
+
+        // GitHub/Docker-friendly kebab-case: remove underscores and collapse separators.
+        return rawName
+                .replace('_', '-')
+                .replaceAll("[^a-z0-9-]", "-")
+                .replaceAll("-+", "-")
+                .replaceAll("^-+", "")
+                .replaceAll("-+$", "");
     }
 
     /**
