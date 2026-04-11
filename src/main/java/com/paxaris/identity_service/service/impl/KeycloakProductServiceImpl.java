@@ -331,9 +331,12 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             String frontendRepo = generateRepositoryName(realm, ownerUsername, clientId + "-frontend");
             status.addStep("Generate Repository Names", "SUCCESS", backendRepo + " & " + frontendRepo);
 
+            Path backendSourcePath = resolveProvisioningSourceRoot(backendPath);
+            Path frontendSourcePath = resolveProvisioningSourceRoot(frontendPath);
+
             status.addStep("Create GitHub Repositories", "IN_PROGRESS", "Creating and provisioning repositories");
-            provisionRepositoryViaProductManager(backendRepo, backendPath);
-            provisionRepositoryViaProductManager(frontendRepo, frontendPath);
+            provisionRepositoryViaProductManager(backendRepo, backendSourcePath);
+            provisionRepositoryViaProductManager(frontendRepo, frontendSourcePath);
             status.addStep("Create GitHub Repositories", "SUCCESS", "Repositories created and provisioned");
 
             status.addStep("Upload Code to GitHub", "IN_PROGRESS", "Code uploaded (via Product Manager)");
@@ -1161,6 +1164,22 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
         if (!resolvedPath.startsWith(basePath)) {
             throw new IOException("Invalid ZIP entry: path traversal detected");
         }
+    }
+
+    private Path resolveProvisioningSourceRoot(Path extractedRoot) throws IOException {
+        try (var children = Files.list(extractedRoot)) {
+            List<Path> entries = children.toList();
+            List<Path> directories = entries.stream().filter(Files::isDirectory).toList();
+            boolean hasTopLevelFiles = entries.stream().anyMatch(Files::isRegularFile);
+
+            if (!hasTopLevelFiles && directories.size() == 1) {
+                Path nestedRoot = directories.get(0);
+                log.info("Using nested ZIP root '{}' as provisioning source", nestedRoot.getFileName());
+                return nestedRoot;
+            }
+        }
+
+        return extractedRoot;
     }
 
     // GitHub upload methods removed - now delegated to Product Manager service
