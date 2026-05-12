@@ -26,6 +26,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
@@ -261,11 +262,43 @@ public class KeycloakProductController {
                 } catch (HttpClientErrorException.Unauthorized e) {
                         logger.warn("Invalid credentials for realm {}: {}", realm, e.getMessage());
                         throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials", e);
+                } catch (IllegalArgumentException e) {
+                        // Keycloak rejected password grant (wrong password, client config, etc.)
+                        logger.warn("Login rejected for realm {}: {}", realm, e.getMessage());
+                        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, e.getMessage(), e);
+                } catch (IllegalStateException e) {
+                        // Auto-fix of Keycloak client (Direct Access Grants) failed
+                        logger.error("Keycloak client configuration error for realm {}: {}", realm, e.getMessage());
+                        throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, e.getMessage(), e);
                 } catch (Exception e) {
-            logger.error("❌ Login failed: {}", e.getMessage(), e);
+                        // Walk full chain (some wrappers omit immediate cause); prefer Keycloak HTTP status over generic 500.
+                        Throwable cur = e;
+                        while (cur != null) {
+                                if (cur instanceof HttpStatusCodeException hse) {
+                                        int code = hse.getStatusCode().value();
+                                        if (code == 401) {
+                                                logger.warn("Keycloak token endpoint 401 for realm {} ({}): {}", realm,
+                                                                hse.getClass().getSimpleName(), hse.getMessage());
+                                                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
+                                                                "Keycloak rejected login (401). Wrong username/password, "
+                                                                                + "invalid client_id, or client secret does not match.",
+                                                                hse);
+                                        }
+                                        if (code >= 400 && code < 500) {
+                                                String body = hse.getResponseBodyAsString();
+                                                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
+                                                                (body != null && !body.isBlank()) ? body
+                                                                                : ("Keycloak rejected login (" + code + ")"),
+                                                                hse);
+                                        }
+                                        break;
+                                }
+                                cur = cur.getCause();
+                        }
+                        logger.error("❌ Login failed: {}", e.getMessage(), e);
                         throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                                         "Login failed: " + e.getMessage(), e);
-        }
+                }
     }
 
         @PostMapping("/{realm}/refresh")

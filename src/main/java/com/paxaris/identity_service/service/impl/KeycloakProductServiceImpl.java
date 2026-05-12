@@ -151,26 +151,111 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
         log.debug("Starting login flow for user '{}' in realm '{}' with product '{}'", username, realm, clientId);
 
         try {
+            if (!adminCliClient.equals(clientId)) {
+                ensureLoginClientAllowsPasswordGrant(realm, clientId);
+            }
             String clientSecret = null;
             if (!adminCliClient.equals(clientId)) {
                 clientSecret = fetchProductSecretByClientId(realm, clientId);
                 log.debug("Product secret resolved for product '{}'", clientId);
             }
 
-            String tokenUrl = buildUrl("/realms/" + realm + "/protocol/openid-connect/token");
-            MultiValueMap<String, String> formData = buildTokenRequestBody(GRANT_TYPE_PASSWORD, clientId, username, password, clientSecret);
-
-            HttpHeaders headers = createFormHeaders();
-            headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
-            HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(formData, headers);
-
-            ResponseEntity<String> response = restTemplate.exchange(tokenUrl, HttpMethod.POST, request, String.class);
-            return objectMapper.readValue(response.getBody(), new TypeReference<>() {});
-
+            try {
+                return postPasswordGrantToken(realm, clientId, username, password, clientSecret);
+            } catch (HttpStatusCodeException first) {
+                if (!first.getStatusCode().is4xxClientError()) {
+                    throw first;
+                }
+                if (!adminCliClient.equals(clientId) && shouldRetryLoginAfterKeycloakClientFix(first)) {
+                    log.warn("Login token rejected ({}); re-applying Keycloak client settings and retrying once", first.getStatusCode());
+                    ensureLoginClientAllowsPasswordGrant(realm, clientId);
+                    clientSecret = fetchProductSecretByClientId(realm, clientId);
+                    return postPasswordGrantToken(realm, clientId, username, password, clientSecret);
+                }
+                throw first;
+            }
+        } catch (HttpStatusCodeException e) {
+            if (e.getStatusCode().is5xxServerError()) {
+                String body = e.getResponseBodyAsString();
+                log.error("Keycloak returned {} for realm '{}': {}", e.getStatusCode(), realm, body);
+                throw new IllegalStateException(
+                    "Keycloak error (" + e.getStatusCode().value() + "). Check Keycloak logs.",
+                    e);
+            }
+            String body = e.getResponseBodyAsString();
+            String parsed = parseKeycloakOAuthError(body);
+            log.warn("Keycloak password grant failed for realm '{}' user '{}': {} — {}", realm, username, e.getStatusCode(), body);
+            throw new IllegalArgumentException(parsed != null ? parsed : "Keycloak rejected login (" + e.getStatusCode() + ")");
+        } catch (ResourceAccessException e) {
+            log.error("Cannot reach Keycloak at {} — {}", config.getBaseUrl(), e.toString());
+            throw new IllegalStateException(
+                "Cannot reach Keycloak at "
+                    + config.getBaseUrl()
+                    + ". Set KEYCLOAK_BASE_URL to your Keycloak base URL (e.g. http://127.0.0.1:8080) and ensure it is reachable from identity-service.",
+                e);
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (IllegalStateException e) {
+            throw e;
         } catch (Exception e) {
-            log.error("Failed to get realm token for user '{}': {}", username, e.getMessage());
-            throw new RuntimeException("Failed to get realm token", e);
+            log.error("Failed to get realm token for user '{}': {}", username, e.getMessage(), e);
+            throw new RuntimeException("Failed to get realm token: " + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
         }
+    }
+
+    private Map<String, Object> postPasswordGrantToken(
+        String realm,
+        String clientId,
+        String username,
+        String password,
+        String clientSecret
+    ) throws Exception {
+        String tokenUrl = buildUrl("/realms/" + realm + "/protocol/openid-connect/token");
+        MultiValueMap<String, String> formData =
+            buildTokenRequestBody(GRANT_TYPE_PASSWORD, clientId, username, password, clientSecret);
+        HttpHeaders headers = createFormHeaders();
+        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(formData, headers);
+        ResponseEntity<String> response = restTemplate.exchange(tokenUrl, HttpMethod.POST, request, String.class);
+        return objectMapper.readValue(response.getBody(), new TypeReference<>() {});
+    }
+
+    private boolean shouldRetryLoginAfterKeycloakClientFix(HttpStatusCodeException e) {
+        if (!e.getStatusCode().is4xxClientError()) {
+            return false;
+        }
+        String body = e.getResponseBodyAsString();
+        if (body == null || body.isBlank()) {
+            return e.getStatusCode() == HttpStatus.UNAUTHORIZED || e.getStatusCode() == HttpStatus.BAD_REQUEST;
+        }
+        String lower = body.toLowerCase(Locale.ROOT);
+        return lower.contains("unauthorized_client")
+            || lower.contains("invalid_grant")
+            || lower.contains("invalid_client")
+            || lower.contains("not_allowed");
+    }
+
+    /**
+     * Parses Keycloak / OAuth2 error JSON: {"error":"...","error_description":"..."}
+     */
+    private String parseKeycloakOAuthError(String jsonBody) {
+        if (jsonBody == null || jsonBody.isBlank()) {
+            return null;
+        }
+        try {
+            Map<String, Object> m = objectMapper.readValue(jsonBody, new TypeReference<>() {});
+            Object desc = m.get("error_description");
+            if (desc instanceof String s && !s.isBlank()) {
+                return s.trim();
+            }
+            Object err = m.get("error");
+            if (err instanceof String s && !s.isBlank()) {
+                return s.trim();
+            }
+        } catch (Exception ignored) {
+            // fall through
+        }
+        return null;
     }
 
     @Override
@@ -182,6 +267,9 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
         }
 
         try {
+            if (!adminCliClient.equals(clientId)) {
+                ensureLoginClientAllowsPasswordGrant(realm, clientId);
+            }
             String clientSecret = null;
             if (!adminCliClient.equals(clientId)) {
                 clientSecret = fetchProductSecretByClientId(realm, clientId);
@@ -240,9 +328,17 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             Map<String, Object> clientDetails = response.getBody();
             if (clientDetails != null) {
                 List<String> redirectUris = (List<String>) clientDetails.get("redirectUris");
-                return (redirectUris != null && !redirectUris.isEmpty()) ? redirectUris.get(0) : null;
+                if (redirectUris != null && !redirectUris.isEmpty()) {
+                    String first = redirectUris.get(0);
+                    if (first != null && first.endsWith("/*")) {
+                        return first.substring(0, first.length() - 2);
+                    }
+                    return first;
+                }
+                log.warn("No redirect URIs configured for client '{}' — using SPA default path", clientId);
+                return "/dashboard/product";
             }
-            return null;
+            return "/dashboard/product";
         } catch (Exception e) {
             log.error("Failed to fetch redirect URL for product '{}': {}", clientId, e.getMessage());
             throw new RuntimeException("Failed to fetch redirect URL", e);
@@ -391,7 +487,8 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
         if (isPublicClient) {
             config.put("publicClient", true);
             config.put("standardFlowEnabled", true);
-            config.put("directAccessGrantsEnabled", false);
+            // Password grant (used by identity-service login proxy) requires Direct Access Grants in Keycloak.
+            config.put("directAccessGrantsEnabled", true);
             config.put("serviceAccountsEnabled", false);
             config.put("implicitFlowEnabled", false);
             config.put("redirectUris", List.of(frontendBaseUrl + "/*"));
@@ -454,7 +551,19 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
         try {
             ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), String.class);
             Map<String, Object> map = objectMapper.readValue(response.getBody(), new TypeReference<>() {});
-            return (String) map.get("value");
+            Object raw = map.get("value");
+            if (!(raw instanceof String s) || s.isBlank()) {
+                return null;
+            }
+            return s;
+        } catch (HttpClientErrorException e) {
+            // Public OIDC clients have no client secret; Keycloak Admin API returns 404 for this resource.
+            if (e.getStatusCode().value() == 404) {
+                log.debug("No client secret for '{}' in realm '{}' (public client or not generated)", clientId, realm);
+                return null;
+            }
+            log.error("Failed to fetch secret for '{}': {}", clientId, e.getMessage());
+            throw new RuntimeException("Failed to fetch product secret", e);
         } catch (Exception e) {
             log.error("Failed to fetch secret for '{}': {}", clientId, e.getMessage());
             throw new RuntimeException("Failed to fetch product secret", e);
@@ -500,7 +609,75 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
         }
     }
 
+    /**
+     * Keycloak returns 401 on the password grant if {@code directAccessGrantsEnabled} is false.
+     * Older realms or manual edits may leave that disabled; merge common local dev redirect URIs so
+     * browsers using {@code http://127.0.0.1:4200} match Keycloak origins.
+     */
+    private void ensureLoginClientAllowsPasswordGrant(String realm, String clientId) {
+        String adminToken = getMasterToken();
+        String uuid = getProductUUID(realm, clientId, adminToken);
+        String url = buildUrl("/admin/realms/" + realm + "/clients/" + uuid);
+        ResponseEntity<String> getResp =
+            restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(createBearerHeaders(adminToken)), String.class);
+        Map<String, Object> client;
+        try {
+            client = objectMapper.readValue(getResp.getBody(), new TypeReference<>() {});
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new IllegalStateException("Keycloak client JSON for '" + clientId + "' in realm '" + realm + "' was not valid", e);
+        }
 
+        boolean needsUpdate = false;
+        if (!Boolean.TRUE.equals(client.get("directAccessGrantsEnabled"))) {
+            client.put("directAccessGrantsEnabled", true);
+            needsUpdate = true;
+            log.info("Enabling directAccessGrants for Keycloak client '{}' in realm '{}'", clientId, realm);
+        }
+        needsUpdate |= mergeLocalDevClientUrls(client);
+
+        if (needsUpdate) {
+            try {
+                restTemplate.exchange(url, HttpMethod.PUT, new HttpEntity<>(client, createJsonHeaders(adminToken)), Void.class);
+                log.info("Updated Keycloak client '{}' in realm '{}' for SPA login (password grant / redirects)", clientId, realm);
+            } catch (Exception e) {
+                log.error("PUT Keycloak client '{}' in realm '{}' failed: {}", clientId, realm, e.getMessage());
+                throw new IllegalStateException(
+                    "Could not update Keycloak client '" + clientId + "' (enable Direct Access Grants). Admin API error: " + e.getMessage(),
+                    e);
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private boolean mergeLocalDevClientUrls(Map<String, Object> client) {
+        boolean changed = false;
+        changed |= mergeUriList(client, "redirectUris",
+            List.of("http://127.0.0.1:4200/*", "http://localhost:4200/*"));
+        changed |= mergeUriList(client, "webOrigins",
+            List.of("http://127.0.0.1:4200", "http://localhost:4200"));
+        return changed;
+    }
+
+    @SuppressWarnings("unchecked")
+    private boolean mergeUriList(Map<String, Object> client, String key, List<String> defaults) {
+        List<String> list = (List<String>) client.get(key);
+        if (list == null) {
+            list = new ArrayList<>();
+        } else {
+            list = new ArrayList<>(list);
+        }
+        boolean changed = false;
+        for (String add : defaults) {
+            if (!list.contains(add)) {
+                list.add(add);
+                changed = true;
+            }
+        }
+        if (changed) {
+            client.put(key, list);
+        }
+        return changed;
+    }
 
     // ==================== USER MANAGEMENT ====================
 
@@ -1074,6 +1251,15 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
         body.put("standardFlowEnabled", false);
         body.put("implicitFlowEnabled", false);
         body.put("bearerOnly", false);
+        // Required for SPA login behind port-forward / ngrok; avoids empty redirectUris (bad redirects / browser blocks).
+        body.put("redirectUris", List.of(
+            "http://127.0.0.1:4200/*",
+            "http://localhost:4200/*"));
+        body.put("webOrigins", List.of(
+            "http://127.0.0.1:4200",
+            "http://localhost:4200"));
+        body.put("rootUrl", "http://127.0.0.1:4200");
+        body.put("baseUrl", "/");
 
         HttpHeaders headers = createJsonHeaders(token);
 
