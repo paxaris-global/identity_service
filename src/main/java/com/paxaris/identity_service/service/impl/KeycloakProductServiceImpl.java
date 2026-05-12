@@ -158,6 +158,19 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             if (!adminCliClient.equals(clientId)) {
                 clientSecret = fetchProductSecretByClientId(realm, clientId);
                 log.debug("Product secret resolved for product '{}'", clientId);
+                if (clientSecret == null || clientSecret.isBlank()) {
+                    String masterToken = getMasterToken();
+                    if (clientRequiresSecret(realm, clientId, masterToken)) {
+                        throw new IllegalStateException(
+                            "Keycloak client '"
+                                + clientId
+                                + "' is confidential but has no client_secret in Keycloak. "
+                                + "Open Keycloak Admin → Clients → "
+                                + clientId
+                                + " → Credentials (regenerate if needed). "
+                                + "The identity service uses this secret for the password grant.");
+                    }
+                }
             }
 
             try {
@@ -220,6 +233,10 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
         return objectMapper.readValue(response.getBody(), new TypeReference<>() {});
     }
 
+    /**
+     * Retry only when fixing Keycloak client flags (e.g. Direct Access Grants) or fetching a new secret can help.
+     * Do not retry on {@code invalid_grant} from wrong username/password — Keycloak uses that error too and retry is misleading.
+     */
     private boolean shouldRetryLoginAfterKeycloakClientFix(HttpStatusCodeException e) {
         if (!e.getStatusCode().is4xxClientError()) {
             return false;
@@ -229,10 +246,35 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             return e.getStatusCode() == HttpStatus.UNAUTHORIZED || e.getStatusCode() == HttpStatus.BAD_REQUEST;
         }
         String lower = body.toLowerCase(Locale.ROOT);
+        if (lower.contains("invalid user credentials")
+            || lower.contains("invalid_username_or_password")
+            || lower.contains("account disabled")) {
+            return false;
+        }
+        // Wrong password and most grant failures use invalid_grant — retrying client settings does not help.
+        if (lower.contains("invalid_grant")) {
+            return false;
+        }
         return lower.contains("unauthorized_client")
-            || lower.contains("invalid_grant")
             || lower.contains("invalid_client")
-            || lower.contains("not_allowed");
+            || lower.contains("not_allowed")
+            || lower.contains("client not allowed")
+            || lower.contains("direct access");
+    }
+
+    /** {@code true} if Keycloak client is confidential (needs {@code client_secret} on token endpoint). */
+    private boolean clientRequiresSecret(String realm, String clientId, String adminToken) {
+        try {
+            String uuid = getProductUUID(realm, clientId, adminToken);
+            String url = buildUrl("/admin/realms/" + realm + "/clients/" + uuid);
+            ResponseEntity<String> getResp =
+                restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(createBearerHeaders(adminToken)), String.class);
+            Map<String, Object> client = objectMapper.readValue(getResp.getBody(), new TypeReference<>() {});
+            return !Boolean.TRUE.equals(client.get("publicClient"));
+        } catch (Exception ex) {
+            log.warn("Could not read publicClient flag for '{}': {} — assuming secret may be required", clientId, ex.getMessage());
+            return false;
+        }
     }
 
     /**
