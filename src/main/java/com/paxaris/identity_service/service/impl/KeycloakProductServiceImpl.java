@@ -102,6 +102,9 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
     @Value("${identity.token-config.sso-session-max-lifespan-seconds}")
     private int ssoSessionMaxLifespanSeconds;
 
+    @Value("${identity.frontend.allowed-origins}")
+    private String frontendAllowedOrigins;
+
 
     // ==================== TOKEN MANAGEMENT ====================
 
@@ -132,8 +135,8 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
     }
 
     @Override
-    public Map<String, Object> getRealmToken(String realm, String username, String password,
-                                              String clientId, String clientSecret) {
+    public Map<String, Object> getRealmToken(String realm, String username, String password,String clientId, String clientSecret) {
+
         log.debug("Authenticating user '{}' in realm '{}'", username, realm);
         String tokenUrl = buildUrl("/realms/" + realm + "/protocol/openid-connect/token");
         MultiValueMap<String, String> body = buildTokenRequestBody(GRANT_TYPE_PASSWORD, clientId, username, password, clientSecret);
@@ -653,8 +656,8 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
 
     /**
      * Keycloak returns 401 on the password grant if {@code directAccessGrantsEnabled} is false.
-     * Older realms or manual edits may leave that disabled; merge common local dev redirect URIs so
-     * browsers using {@code http://127.0.0.1:4200} match Keycloak origins.
+     * Older realms or manual edits may leave that disabled; merge configured local dev redirect URIs so
+     * browsers using the current Paxo frontend port match Keycloak origins.
      */
     private void ensureLoginClientAllowsPasswordGrant(String realm, String clientId) {
         String adminToken = getMasterToken();
@@ -693,11 +696,28 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
     @SuppressWarnings("unchecked")
     private boolean mergeLocalDevClientUrls(Map<String, Object> client) {
         boolean changed = false;
-        changed |= mergeUriList(client, "redirectUris",
-            List.of("http://127.0.0.1:4200/*", "http://localhost:4200/*"));
-        changed |= mergeUriList(client, "webOrigins",
-            List.of("http://127.0.0.1:4200", "http://localhost:4200"));
+        List<String> webOrigins = frontendWebOrigins();
+        changed |= mergeUriList(client, "redirectUris", frontendRedirectUris(webOrigins));
+        changed |= mergeUriList(client, "webOrigins", webOrigins);
         return changed;
+    }
+
+    private List<String> frontendWebOrigins() {
+        List<String> origins = Arrays.stream(frontendAllowedOrigins.split(","))
+            .map(String::trim)
+            .filter(origin -> !origin.isEmpty())
+            .distinct()
+            .toList();
+        if (!origins.isEmpty()) {
+            return origins;
+        }
+        return List.of("http://127.0.0.1:4200", "http://localhost:4200");
+    }
+
+    private List<String> frontendRedirectUris(List<String> webOrigins) {
+        return webOrigins.stream()
+            .map(origin -> origin.endsWith("/*") ? origin : origin + "/*")
+            .toList();
     }
 
     @SuppressWarnings("unchecked")
@@ -743,6 +763,9 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
                 }
             }
             throw new RuntimeException("Failed to create user - status: " + response.getStatusCode());
+        } catch (HttpClientErrorException.Conflict e) {
+            log.warn("User '{}' already exists in realm '{}'; reusing existing user", username, realm);
+            return resolveUserId(realm, username, token);
         } catch (Exception e) {
             log.error("Failed to create user '{}': {}", username, e.getMessage());
             throw new RuntimeException("Failed to create user", e);
@@ -997,6 +1020,9 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             HttpHeaders headers = createJsonHeaders(token);
             restTemplate.postForEntity(url, new HttpEntity<>(body, headers), String.class);
             log.info("Role '{}' created successfully", role.getName());
+            return true;
+        } catch (HttpClientErrorException.Conflict e) {
+            log.info("Role '{}' already exists in product UUID '{}' in realm '{}'", role.getName(), clientUUID, realm);
             return true;
         } catch (Exception e) {
             log.error("Failed to create role '{}': {}", role.getName(), e.getMessage());
@@ -1294,13 +1320,10 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
         body.put("implicitFlowEnabled", false);
         body.put("bearerOnly", false);
         // Required for SPA login behind port-forward / ngrok; avoids empty redirectUris (bad redirects / browser blocks).
-        body.put("redirectUris", List.of(
-            "http://127.0.0.1:4200/*",
-            "http://localhost:4200/*"));
-        body.put("webOrigins", List.of(
-            "http://127.0.0.1:4200",
-            "http://localhost:4200"));
-        body.put("rootUrl", "http://127.0.0.1:4200");
+        List<String> webOrigins = frontendWebOrigins();
+        body.put("redirectUris", frontendRedirectUris(webOrigins));
+        body.put("webOrigins", webOrigins);
+        body.put("rootUrl", webOrigins.get(0));
         body.put("baseUrl", "/");
 
         HttpHeaders headers = createJsonHeaders(token);
@@ -1312,8 +1335,13 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             log.info("Admin product '{}' created successfully with UUID: {}", clientId, clientUUID);
             return clientUUID;
         } catch (HttpClientErrorException.Conflict e) {
-            log.warn("Admin product '{}' already exists in realm '{}': {}", clientId, realm, e.getResponseBodyAsString());
-            throw new RuntimeException("Admin product already exists", e);
+            log.warn("Admin product '{}' already exists in realm '{}'; reusing existing client", clientId, realm);
+            String clientUUID = getProductUUID(realm, clientId, token);
+            ensureLoginClientAllowsPasswordGrant(realm, clientId);
+            if (getProductSecret(realm, clientId, token) == null) {
+                ensureClientSecret(realm, clientUUID, token);
+            }
+            return clientUUID;
         } catch (Exception e) {
             log.error("Failed to create admin product: {}", e.getMessage());
             throw new RuntimeException("Failed to create admin product", e);
