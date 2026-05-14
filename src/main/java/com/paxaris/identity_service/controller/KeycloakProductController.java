@@ -683,9 +683,20 @@ public class KeycloakProductController {
         Jwt decodedJwt = jwtDecoder.decode(token);
         Map<String, Object> claims = decodedJwt.getClaims();
         try {
-            String realmName = claims.get("azp") instanceof String
-                    ? (String) claims.get("azp")
-                    : "";
+            String realmName = "";
+            Object issuer = claims.get("iss");
+            if (issuer instanceof String issuerValue) {
+                int markerIndex = issuerValue.lastIndexOf("/realms/");
+                if (markerIndex >= 0) {
+                    realmName = issuerValue.substring(markerIndex + "/realms/".length());
+                }
+            }
+            if (realmName.isBlank() && claims.get("realm") instanceof String realmClaim) {
+                realmName = realmClaim;
+            }
+            if (realmName.isBlank()) {
+                throw new IllegalArgumentException("Realm claim not found in token issuer");
+            }
             return ResponseEntity.ok(realmName);
         } catch (Exception e) {
                         throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
