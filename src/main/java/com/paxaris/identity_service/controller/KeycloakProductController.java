@@ -739,8 +739,6 @@ public class KeycloakProductController {
             @RequestPart("backendZip") MultipartFile backendZip,
             @Parameter(description = "Frontend application ZIP file", required = true)
             @RequestPart("frontendZip") MultipartFile frontendZip,
-            @Parameter(description = "Frontend base URL/redirect URI", required = true, example = "https://myapp.example.com")
-            @RequestPart("frontendBaseUrl") String frontendBaseUrl,
             @Parameter(description = "JWT Bearer token", required = true)
             @RequestHeader("Authorization") String authorizationHeader
     ) {
@@ -779,7 +777,6 @@ public class KeycloakProductController {
                     masterToken,
                     backendZip,
                     frontendZip,
-                    frontendBaseUrl,   // 👈 redirect URL
                     status,
                     username
             );
@@ -816,7 +813,7 @@ public class KeycloakProductController {
             @RequestPart("client") Map<String, Object> clientRequest,
             @RequestPart("backendZip") MultipartFile backendZip,
             @RequestPart("frontendZip") MultipartFile frontendZip,
-            @RequestPart("frontendBaseUrl") String frontendBaseUrl,
+            @RequestPart(value = "frontendBaseUrl", required = false) String frontendBaseUrl,
             @RequestHeader("Authorization") String authorizationHeader
     ) {
         Map<String, Object> productRequest = new HashMap<>();
@@ -833,7 +830,6 @@ public class KeycloakProductController {
                 productRequest,
                 backendZip,
                 frontendZip,
-                frontendBaseUrl,
                 authorizationHeader
         );
     }

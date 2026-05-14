@@ -66,6 +66,9 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
     @Value("${project.management.provision-upload-path}")
     private String provisionUploadPath;
 
+    @Value("${project.management.product-provision-path}")
+    private String productProvisionPath;
+
     @Value("${keycloak.client-id}")
     private String adminCliClient;
 
@@ -450,17 +453,13 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
 
     @Override
     public String createProduct(String realm, String clientId, boolean isPublicClient, String adminToken,
-            MultipartFile backendZip, MultipartFile frontendZip, String frontendBaseUrl,
+            MultipartFile backendZip, MultipartFile frontendZip,
             SignupStatus status, String ownerUsername) {
 
         Path backendPath = null;
         Path frontendPath = null;
 
         try {
-            status.addStep("Create Product", "IN_PROGRESS", "Creating Keycloak product");
-            String clientUUID = createKeycloakClient(realm, clientId, isPublicClient, frontendBaseUrl, adminToken);
-            status.addStep("Create Product", "SUCCESS", "Product created: " + clientUUID);
-
             status.addStep("Extract Application Code", "IN_PROGRESS", "Extracting ZIP files");
             backendPath = Files.createTempDirectory("backend-extract-");
             frontendPath = Files.createTempDirectory("frontend-extract-");
@@ -476,18 +475,40 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             Path frontendSourcePath = resolveProvisioningSourceRoot(frontendPath);
 
             status.addStep("Create GitHub Repositories", "IN_PROGRESS", "Creating and provisioning repositories");
-            provisionRepositoryViaProductManager(backendRepo, backendSourcePath);
-            provisionRepositoryViaProductManager(frontendRepo, frontendSourcePath);
-            status.addStep("Create GitHub Repositories", "SUCCESS", "Repositories created and provisioned");
+            Map<String, Object> provisioningResult = provisionProductViaProductManager(
+                    realm,
+                    clientId,
+                    backendRepo,
+                    frontendRepo,
+                    backendSourcePath,
+                    frontendSourcePath
+            );
+            String frontendBaseUrl = requireString(provisioningResult, "frontendBaseUrl");
+            String backendBaseUrl = requireString(provisioningResult, "backendBaseUrl");
+            status.addStep(
+                    "Create GitHub Repositories",
+                    "SUCCESS",
+                    "Repositories created and provisioned. Frontend: " + frontendBaseUrl + ", Backend: " + backendBaseUrl
+            );
 
             status.addStep("Upload Code to GitHub", "IN_PROGRESS", "Code uploaded (via Product Manager)");
             status.addStep("Upload Code to GitHub", "SUCCESS", "Code uploaded successfully");
+
+            status.addStep("Create Product", "IN_PROGRESS", "Creating or updating Keycloak product URL");
+            String clientUUID = createKeycloakClient(realm, clientId, isPublicClient, frontendBaseUrl, adminToken);
+            status.addStep("Create Product", "SUCCESS", "Product URL saved in Keycloak: " + frontendBaseUrl);
 
             cleanupDirectory(backendPath);
             cleanupDirectory(frontendPath);
 
             status.setStatus("SUCCESS");
-            status.setMessage("Product provisioning completed successfully");
+            status.setMessage("Product provisioning completed successfully. Open product at: " + frontendBaseUrl);
+            status.setToken(Map.of(
+                    "frontendBaseUrl", frontendBaseUrl,
+                    "backendBaseUrl", backendBaseUrl,
+                    "frontendNodePort", provisioningResult.get("frontendNodePort"),
+                    "backendNodePort", provisioningResult.get("backendNodePort")
+            ));
             return clientUUID;
 
         } catch (Exception e) {
@@ -516,7 +537,12 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             return clientUUID;
         } catch (HttpClientErrorException.Conflict e) {
             log.warn("Product '{}' already exists in realm '{}': {}", clientId, realm, e.getResponseBodyAsString());
-            throw new RuntimeException("Product already exists", e);
+            String clientUUID = getProductUUID(realm, clientId, token);
+            updateKeycloakClient(realm, clientUUID, buildClientConfiguration(clientId, isPublicClient, frontendBaseUrl), token);
+            if (!isPublicClient) {
+                ensureClientSecret(realm, clientUUID, token);
+            }
+            return clientUUID;
         } catch (Exception e) {
             log.error("Failed to create product '{}': {}", clientId, e.getMessage());
             throw new RuntimeException("Failed to create product", e);
@@ -528,6 +554,11 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
         config.put("clientId", clientId);
         config.put("enabled", true);
         config.put("protocol", keycloakProtocol);
+        config.put("redirectUris", List.of(frontendBaseUrl + "/*"));
+        config.put("webOrigins", List.of(frontendBaseUrl));
+        config.put("rootUrl", frontendBaseUrl);
+        config.put("baseUrl", frontendBaseUrl);
+        config.put("attributes", Map.of("post.logout.redirect.uris", frontendBaseUrl + "/*"));
 
         if (isPublicClient) {
             config.put("publicClient", true);
@@ -536,11 +567,6 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             config.put("directAccessGrantsEnabled", true);
             config.put("serviceAccountsEnabled", false);
             config.put("implicitFlowEnabled", false);
-            config.put("redirectUris", List.of(frontendBaseUrl + "/*"));
-            config.put("webOrigins", List.of(frontendBaseUrl));
-            config.put("rootUrl", frontendBaseUrl);
-            config.put("baseUrl", frontendBaseUrl);
-            config.put("attributes", Map.of("post.logout.redirect.uris", frontendBaseUrl + "/*"));
         } else {
             config.put("publicClient", false);
             config.put("clientAuthenticatorType", "client-secret");
@@ -551,6 +577,13 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             config.put("bearerOnly", false);
         }
         return config;
+    }
+
+    private void updateKeycloakClient(String realm, String clientUUID, Map<String, Object> body, String token) {
+        String url = buildUrl("/admin/realms/" + realm + "/clients/" + clientUUID);
+        HttpHeaders headers = createJsonHeaders(token);
+        restTemplate.exchange(url, HttpMethod.PUT, new HttpEntity<>(body, headers), Void.class);
+        log.info("Product '{}' updated successfully with generated frontend URL", body.get("clientId"));
     }
 
     private void ensureClientSecret(String realm, String clientUUID, String token) {
@@ -1517,6 +1550,119 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
     /**
      * Call Product Manager microservice to provision repository with uploaded code
      */
+    private Map<String, Object> provisionProductViaProductManager(
+            String realmName,
+            String productId,
+            String backendRepoName,
+            String frontendRepoName,
+            Path backendCodePath,
+            Path frontendCodePath
+    ) throws IOException {
+        String provisionUrl = projectManagementBaseUrl + productProvisionPath;
+
+        log.info("Provisioning product '{}' via Product Manager at {}", productId, provisionUrl);
+
+        Path backendZipFile = null;
+        Path frontendZipFile = null;
+        try {
+            backendZipFile = createZipFromDirectory(backendCodePath);
+            frontendZipFile = createZipFromDirectory(frontendCodePath);
+
+            return callProductManagerProductProvisioning(
+                    provisionUrl,
+                    realmName,
+                    productId,
+                    backendRepoName,
+                    frontendRepoName,
+                    backendZipFile,
+                    frontendZipFile
+            );
+        } catch (Exception e) {
+            log.error("❌ Failed to provision product via Product Manager: {}", e.getMessage());
+            throw new RuntimeException("Product Manager provisioning failed for product: " + productId, e);
+        } finally {
+            cleanupTempFile(backendZipFile);
+            cleanupTempFile(frontendZipFile);
+        }
+    }
+
+    private Map<String, Object> callProductManagerProductProvisioning(
+            String url,
+            String realmName,
+            String productId,
+            String backendRepoName,
+            String frontendRepoName,
+            Path backendZipFile,
+            Path frontendZipFile
+    ) throws IOException {
+        long backendZipSizeBytes = Files.size(backendZipFile);
+        long frontendZipSizeBytes = Files.size(frontendZipFile);
+        log.info(
+                "Uploading product ZIPs to Product Manager (backend: {} bytes, frontend: {} bytes)",
+                backendZipSizeBytes,
+                frontendZipSizeBytes
+        );
+
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+            headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+
+            LinkedMultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+            body.add("realmName", realmName);
+            body.add("productId", productId);
+            body.add("backendRepoName", backendRepoName);
+            body.add("frontendRepoName", frontendRepoName);
+            body.add("backendZip", new org.springframework.core.io.FileSystemResource(backendZipFile.toFile()));
+            body.add("frontendZip", new org.springframework.core.io.FileSystemResource(frontendZipFile.toFile()));
+
+            HttpEntity<LinkedMultiValueMap<String, Object>> request = new HttpEntity<>(body, headers);
+            ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
+
+            if (!response.getStatusCode().is2xxSuccessful()) {
+                throw new RuntimeException("Product Manager returned HTTP " + response.getStatusCode().value());
+            }
+            if (response.getBody() == null) {
+                throw new RuntimeException("Product Manager returned empty response");
+            }
+
+            Map<String, Object> responseBody = response.getBody();
+            if (!"success".equalsIgnoreCase(String.valueOf(responseBody.get("status")))) {
+                throw new RuntimeException("Product Manager returned status: " + responseBody.get("status"));
+            }
+            return responseBody;
+        } catch (ResourceAccessException e) {
+            throw new IOException("Failed to upload product ZIPs to Product Manager", e);
+        } catch (HttpStatusCodeException e) {
+            throw new IOException(
+                    "Product Manager returned HTTP " + e.getStatusCode().value() +
+                            " while provisioning product. Response body: " + e.getResponseBodyAsString(),
+                    e
+            );
+        } catch (Exception e) {
+            throw new IOException("Failed to call Product Manager product provisioning: " + e.getMessage(), e);
+        }
+    }
+
+    private String requireString(Map<String, Object> values, String key) {
+        Object value = values.get(key);
+        if (value == null || value.toString().isBlank()) {
+            throw new IllegalStateException("Product Manager response is missing required field: " + key);
+        }
+        return value.toString();
+    }
+
+    private void cleanupTempFile(Path path) {
+        if (path == null) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(path);
+        } catch (IOException ex) {
+            log.warn("Failed to cleanup temporary file '{}': {}", path, ex.getMessage());
+        }
+    }
+
     private void provisionRepositoryViaProductManager(String repoName, Path codePath) throws IOException {
         String provisionUrl = projectManagementBaseUrl + provisionUploadPath;
         

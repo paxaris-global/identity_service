@@ -43,7 +43,6 @@ public interface KeycloakProductService {
                 String token,
                 MultipartFile backendZip,
                 MultipartFile frontendZip,
-                String frontendBaseUrl,
                 SignupStatus status,
                 String adminUsername
         );
