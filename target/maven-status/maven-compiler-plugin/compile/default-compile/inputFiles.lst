@@ -1,18 +1,21 @@
-/Users/m5/paxarisglobal product/identity_service/src/main/java/com/paxaris/identity_service/config/CorrelationIdFilter.java
-/Users/m5/paxarisglobal product/identity_service/src/main/java/com/paxaris/identity_service/config/JwtDecoderConfig.java
-/Users/m5/paxarisglobal product/identity_service/src/main/java/com/paxaris/identity_service/config/KeycloakRealmAndClientRoleConverter.java
-/Users/m5/paxarisglobal product/identity_service/src/main/java/com/paxaris/identity_service/config/OpenApiConfig.java
-/Users/m5/paxarisglobal product/identity_service/src/main/java/com/paxaris/identity_service/config/SecurityConfig.java
-/Users/m5/paxarisglobal product/identity_service/src/main/java/com/paxaris/identity_service/config/WebClientConfig.java
-/Users/m5/paxarisglobal product/identity_service/src/main/java/com/paxaris/identity_service/controller/KeycloakProductController.java
-/Users/m5/paxarisglobal product/identity_service/src/main/java/com/paxaris/identity_service/dto/AssignRoleRequest.java
-/Users/m5/paxarisglobal product/identity_service/src/main/java/com/paxaris/identity_service/dto/KeycloakConfig.java
-/Users/m5/paxarisglobal product/identity_service/src/main/java/com/paxaris/identity_service/dto/RoleCreationRequest.java
-/Users/m5/paxarisglobal product/identity_service/src/main/java/com/paxaris/identity_service/dto/RoleRequest.java
-/Users/m5/paxarisglobal product/identity_service/src/main/java/com/paxaris/identity_service/dto/SignupRequest.java
-/Users/m5/paxarisglobal product/identity_service/src/main/java/com/paxaris/identity_service/dto/SignupStatus.java
-/Users/m5/paxarisglobal product/identity_service/src/main/java/com/paxaris/identity_service/exception/GlobalExceptionHandler.java
-/Users/m5/paxarisglobal product/identity_service/src/main/java/com/paxaris/identity_service/identityService.java
-/Users/m5/paxarisglobal product/identity_service/src/main/java/com/paxaris/identity_service/service/DynamicJwtDecoder.java
-/Users/m5/paxarisglobal product/identity_service/src/main/java/com/paxaris/identity_service/service/KeycloakProductService.java
-/Users/m5/paxarisglobal product/identity_service/src/main/java/com/paxaris/identity_service/service/impl/KeycloakProductServiceImpl.java
+/Users/m5/paxarisGateway/identity_service/src/main/java/com/paxaris/identity_service/config/CorrelationIdFilter.java
+/Users/m5/paxarisGateway/identity_service/src/main/java/com/paxaris/identity_service/config/KeycloakRealmAndClientRoleConverter.java
+/Users/m5/paxarisGateway/identity_service/src/main/java/com/paxaris/identity_service/config/OpenApiConfig.java
+/Users/m5/paxarisGateway/identity_service/src/main/java/com/paxaris/identity_service/config/SecurityConfig.java
+/Users/m5/paxarisGateway/identity_service/src/main/java/com/paxaris/identity_service/config/WebClientConfig.java
+/Users/m5/paxarisGateway/identity_service/src/main/java/com/paxaris/identity_service/controller/KeycloakProductController.java
+/Users/m5/paxarisGateway/identity_service/src/main/java/com/paxaris/identity_service/dto/AssignRoleRequest.java
+/Users/m5/paxarisGateway/identity_service/src/main/java/com/paxaris/identity_service/dto/KeycloakConfig.java
+/Users/m5/paxarisGateway/identity_service/src/main/java/com/paxaris/identity_service/dto/RoleCreationRequest.java
+/Users/m5/paxarisGateway/identity_service/src/main/java/com/paxaris/identity_service/dto/RoleRequest.java
+/Users/m5/paxarisGateway/identity_service/src/main/java/com/paxaris/identity_service/dto/SignupRequest.java
+/Users/m5/paxarisGateway/identity_service/src/main/java/com/paxaris/identity_service/dto/SignupStatus.java
+/Users/m5/paxarisGateway/identity_service/src/main/java/com/paxaris/identity_service/exception/GlobalExceptionHandler.java
+/Users/m5/paxarisGateway/identity_service/src/main/java/com/paxaris/identity_service/externalproduct/client/ProductIntegrationKeycloakClient.java
+/Users/m5/paxarisGateway/identity_service/src/main/java/com/paxaris/identity_service/externalproduct/controller/ProductIntegrationController.java
+/Users/m5/paxarisGateway/identity_service/src/main/java/com/paxaris/identity_service/externalproduct/service/ProductIntegrationService.java
+/Users/m5/paxarisGateway/identity_service/src/main/java/com/paxaris/identity_service/externalproduct/service/impl/ProductIntegrationServiceImpl.java
+/Users/m5/paxarisGateway/identity_service/src/main/java/com/paxaris/identity_service/identityService.java
+/Users/m5/paxarisGateway/identity_service/src/main/java/com/paxaris/identity_service/service/DynamicJwtDecoder.java
+/Users/m5/paxarisGateway/identity_service/src/main/java/com/paxaris/identity_service/service/KeycloakProductService.java
+/Users/m5/paxarisGateway/identity_service/src/main/java/com/paxaris/identity_service/service/impl/KeycloakProductServiceImpl.java
