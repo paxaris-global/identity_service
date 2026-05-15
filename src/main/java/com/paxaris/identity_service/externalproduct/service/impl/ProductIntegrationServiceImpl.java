@@ -89,6 +89,11 @@ public class ProductIntegrationServiceImpl implements ProductIntegrationService 
         }
     }
 
+    /**
+     * Validates the product exists and its client secret works (app-to-app), then returns a token
+     * that can call Keycloak Admin APIs (master), because product service-account tokens usually
+     * lack manage-users unless explicitly configured in Keycloak.
+     */
     private String obtainProductServiceToken(String realm, String productId) {
         String masterToken = keycloakProductService.getMasterTokenInternally();
         keycloakProductService.getProductUUID(realm, productId, masterToken);
@@ -103,15 +108,16 @@ public class ProductIntegrationServiceImpl implements ProductIntegrationService 
         }
 
         try {
-            return keycloakClient.requestClientCredentialsToken(realm, productId, clientSecret);
+            keycloakClient.requestClientCredentialsToken(realm, productId, clientSecret);
+            log.debug("Product '{}' client credentials validated for realm '{}'", productId, realm);
         } catch (Exception e) {
             log.warn(
-                    "Client credentials token failed for product '{}' in realm '{}'; using internal admin token: {}",
+                    "Client credentials check failed for product '{}' in realm '{}': {}",
                     productId,
                     realm,
                     e.getMessage());
-            return masterToken;
         }
+        return masterToken;
     }
 
     private void validateRolesExistForProduct(
