@@ -36,6 +36,30 @@ public interface KeycloakProductService {
         List<Map<String, Object>> getAllRealms(String token);
 
         // Product operations
+        /**
+         * Phase 1: reserve URLs and create/update the Keycloak client. Must succeed before deploy.
+         */
+        SignupStatus createProductInKeycloak(
+                String realm,
+                String productId,
+                boolean isPublicClient,
+                SignupStatus status
+        );
+
+        /**
+         * Phase 2: GitHub + Argo provisioning after Keycloak client exists.
+         */
+        String deployProduct(
+                String realm,
+                String productId,
+                MultipartFile backendZip,
+                MultipartFile frontendZip,
+                SignupStatus status,
+                String ownerUsername
+        );
+
+        Map<String, Object> getProductDeploymentStatus(String realm, String productId);
+
         String createProduct(
                 String realm,
                 String productId,

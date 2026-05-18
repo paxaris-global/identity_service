@@ -69,6 +69,12 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
     @Value("${project.management.product-provision-path}")
     private String productProvisionPath;
 
+    @Value("${project.management.product-urls-path}")
+    private String productUrlsPath;
+
+    @Value("${project.management.product-deployment-status-path}")
+    private String productDeploymentStatusPath;
+
     @Value("${keycloak.client-id}")
     private String adminCliClient;
 
@@ -452,16 +458,83 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
     // ==================== PRODUCT MANAGEMENT ====================
 
     @Override
-    public String createProduct(String realm, String clientId, boolean isPublicClient, String adminToken,
-            MultipartFile backendZip, MultipartFile frontendZip,
-            SignupStatus status, String ownerUsername) {
+    public SignupStatus createProductInKeycloak(
+            String realm,
+            String clientId,
+            boolean isPublicClient,
+            SignupStatus status
+    ) {
+        try {
+            status.addStep(
+                    "Create Product in Keycloak",
+                    "IN_PROGRESS",
+                    "Reserving product URLs and creating Keycloak client"
+            );
 
+            Map<String, Object> urlAllocation = allocateProductUrlsViaProductManager(realm, clientId);
+            String frontendBaseUrl = requireString(urlAllocation, "frontendBaseUrl");
+            String backendBaseUrl = requireString(urlAllocation, "backendBaseUrl");
+
+            String clientUUID = createKeycloakClientWithRetry(realm, clientId, isPublicClient, frontendBaseUrl);
+
+            status.addStep(
+                    "Create Product in Keycloak",
+                    "SUCCESS",
+                    "Keycloak client '" + clientId + "' ready (id=" + clientUUID + ")"
+            );
+
+            status.setStatus("KEYCLOAK_SUCCESS");
+            status.setMessage("Keycloak product created successfully. Deployment can proceed.");
+            status.setToken(Map.of(
+                    "clientUUID", clientUUID,
+                    "frontendBaseUrl", frontendBaseUrl,
+                    "backendBaseUrl", backendBaseUrl,
+                    "frontendNodePort", urlAllocation.get("frontendNodePort"),
+                    "backendNodePort", urlAllocation.get("backendNodePort")
+            ));
+            return status;
+        } catch (Exception e) {
+            log.error("Keycloak product creation failed for realm '{}', product '{}': {}", realm, clientId, e.getMessage());
+            handleProvisioningFailure(status, e);
+            failStep(status, "Create Product in Keycloak", e.getMessage());
+            throw new RuntimeException("Keycloak product creation failed: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public String deployProduct(
+            String realm,
+            String clientId,
+            MultipartFile backendZip,
+            MultipartFile frontendZip,
+            SignupStatus status,
+            String ownerUsername
+    ) {
         Path backendPath = null;
         Path frontendPath = null;
         Map<String, Object> provisioningResult = null;
         String frontendBaseUrl = null;
+        String backendBaseUrl = null;
 
         try {
+            verifyKeycloakProductExists(realm, clientId);
+
+            if (status.getToken() != null) {
+                Object fe = status.getToken().get("frontendBaseUrl");
+                Object be = status.getToken().get("backendBaseUrl");
+                if (fe != null) {
+                    frontendBaseUrl = fe.toString();
+                }
+                if (be != null) {
+                    backendBaseUrl = be.toString();
+                }
+            }
+            if (frontendBaseUrl == null || frontendBaseUrl.isBlank()) {
+                Map<String, Object> urlAllocation = allocateProductUrlsViaProductManager(realm, clientId);
+                frontendBaseUrl = requireString(urlAllocation, "frontendBaseUrl");
+                backendBaseUrl = requireString(urlAllocation, "backendBaseUrl");
+            }
+
             status.addStep("Extract Application Code", "IN_PROGRESS", "Extracting ZIP files");
             backendPath = Files.createTempDirectory("backend-extract-");
             frontendPath = Files.createTempDirectory("frontend-extract-");
@@ -476,7 +549,9 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             Path backendSourcePath = resolveProvisioningSourceRoot(backendPath);
             Path frontendSourcePath = resolveProvisioningSourceRoot(frontendPath);
 
-            status.addStep("Create GitHub Repositories", "IN_PROGRESS", "Creating and provisioning repositories");
+            status.addStep("Provision GitHub Repositories", "IN_PROGRESS", "Creating repos, uploading code, and updating GitOps");
+            status.addStep("Generate Kubernetes Manifests", "IN_PROGRESS", "Postgres, Redis, backend, and frontend manifests");
+            status.addStep("Sync ArgoCD Applications", "IN_PROGRESS", "Registering ArgoCD apps and syncing cluster");
             provisioningResult = provisionProductViaProductManager(
                     realm,
                     clientId,
@@ -485,23 +560,13 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
                     backendSourcePath,
                     frontendSourcePath
             );
-            frontendBaseUrl = requireString(provisioningResult, "frontendBaseUrl");
-            String backendBaseUrl = requireString(provisioningResult, "backendBaseUrl");
+            status.addStep("Provision GitHub Repositories", "SUCCESS", "GitHub repositories provisioned");
+            status.addStep("Generate Kubernetes Manifests", "SUCCESS", "Kubernetes manifests pushed to Paxo GitOps");
             status.addStep(
-                    "Create GitHub Repositories",
+                    "Sync ArgoCD Applications",
                     "SUCCESS",
-                    "Repositories created and provisioned. Frontend: " + frontendBaseUrl + ", Backend: " + backendBaseUrl
+                    "ArgoCD applications created. Frontend: " + frontendBaseUrl + ", Backend: " + backendBaseUrl
             );
-
-            status.addStep("Upload Code to GitHub", "IN_PROGRESS", "Code uploaded (via Product Manager)");
-            status.addStep("Upload Code to GitHub", "SUCCESS", "Code uploaded successfully");
-
-            status.addStep("Create Product", "IN_PROGRESS", "Creating or updating Keycloak product URL");
-            // Product Manager provisioning can take several minutes; the controller's master token may expire.
-            String freshAdminToken = getMasterToken();
-            String clientUUID = createKeycloakClient(realm, clientId, isPublicClient, frontendBaseUrl, freshAdminToken);
-            status.addStep("Create Product", "SUCCESS", "Product URL saved in Keycloak: " + frontendBaseUrl);
-
             cleanupDirectory(backendPath);
             cleanupDirectory(frontendPath);
 
@@ -513,21 +578,81 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
                     "frontendNodePort", provisioningResult.get("frontendNodePort"),
                     "backendNodePort", provisioningResult.get("backendNodePort")
             ));
-            return clientUUID;
-
+            return clientId;
         } catch (Exception e) {
-            log.error("Product provisioning failed for realm '{}', product '{}': {}", realm, clientId, e.getMessage());
+            log.error("Product deployment failed for realm '{}', product '{}': {}", realm, clientId, e.getMessage());
             handleProvisioningFailure(status, e);
             cleanupDirectory(backendPath);
             cleanupDirectory(frontendPath);
-            if (frontendBaseUrl != null && !frontendBaseUrl.isBlank()) {
-                throw new RuntimeException(
-                        "GitHub/Argo deployment completed at " + frontendBaseUrl
-                                + ", but Keycloak client '" + clientId + "' was not created: " + e.getMessage(),
-                        e
-                );
+            throw new RuntimeException(
+                    "Keycloak client exists but deployment failed: " + e.getMessage(),
+                    e
+            );
+        }
+    }
+
+    @Override
+    public String createProduct(String realm, String clientId, boolean isPublicClient, String adminToken,
+            MultipartFile backendZip, MultipartFile frontendZip,
+            SignupStatus status, String ownerUsername) {
+        createProductInKeycloak(realm, clientId, isPublicClient, status);
+        return deployProduct(realm, clientId, backendZip, frontendZip, status, ownerUsername);
+    }
+
+    @Override
+    public Map<String, Object> getProductDeploymentStatus(String realm, String productId) {
+        String statusUrl = projectManagementBaseUrl + productDeploymentStatusPath
+                + "/" + realm + "/" + productId + "/status";
+        try {
+            ResponseEntity<Map> response = restTemplate.getForEntity(statusUrl, Map.class);
+            if (response.getBody() == null) {
+                throw new RuntimeException("Product Manager returned empty deployment status");
             }
-            throw new RuntimeException("Product provisioning failed: " + e.getMessage(), e);
+            return response.getBody();
+        } catch (HttpStatusCodeException e) {
+            throw new RuntimeException(
+                    "Failed to fetch deployment status: HTTP " + e.getStatusCode().value(),
+                    e
+            );
+        } catch (ResourceAccessException e) {
+            throw new RuntimeException("Product Manager is unreachable while fetching deployment status", e);
+        }
+    }
+
+    private void verifyKeycloakProductExists(String realm, String clientId) {
+        String token = getMasterToken();
+        try {
+            getProductUUID(realm, clientId, token);
+        } catch (Exception e) {
+            throw new IllegalStateException(
+                    "Keycloak client '" + clientId + "' does not exist in realm '" + realm
+                            + "'. Create the product in Keycloak before deployment.",
+                    e
+            );
+        }
+    }
+
+    private void failStep(SignupStatus status, String stepName, String error) {
+        for (SignupStatus.StepStatus step : status.getSteps()) {
+            if (stepName.equals(step.getStepName()) && "IN_PROGRESS".equals(step.getStatus())) {
+                step.setStatus("FAILED");
+                step.setError(error);
+                return;
+            }
+        }
+    }
+
+    private String createKeycloakClientWithRetry(
+            String realm,
+            String clientId,
+            boolean isPublicClient,
+            String frontendBaseUrl
+    ) {
+        try {
+            return createKeycloakClient(realm, clientId, isPublicClient, frontendBaseUrl, getMasterToken());
+        } catch (HttpClientErrorException.Unauthorized e) {
+            log.warn("Keycloak admin token rejected while creating '{}', retrying once", clientId);
+            return createKeycloakClient(realm, clientId, isPublicClient, frontendBaseUrl, getMasterToken());
         }
     }
 
@@ -554,6 +679,8 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
                 ensureClientSecret(realm, clientUUID, token);
             }
             return clientUUID;
+        } catch (HttpClientErrorException.Unauthorized e) {
+            throw e;
         } catch (Exception e) {
             log.error("Failed to create product '{}': {}", clientId, e.getMessage());
             throw new RuntimeException("Failed to create product", e);
@@ -1594,6 +1721,41 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
         } finally {
             cleanupTempFile(backendZipFile);
             cleanupTempFile(frontendZipFile);
+        }
+    }
+
+    private Map<String, Object> allocateProductUrlsViaProductManager(String realmName, String productId) throws IOException {
+        String allocateUrl = projectManagementBaseUrl + productUrlsPath;
+        log.info("Allocating product URLs for '{}' via Product Manager at {}", productId, allocateUrl);
+
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+            headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+
+            MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+            body.add("realmName", realmName);
+            body.add("productId", productId);
+
+            HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+            ResponseEntity<Map> response = restTemplate.postForEntity(allocateUrl, request, Map.class);
+
+            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+                throw new RuntimeException("Product Manager URL allocation returned HTTP " + response.getStatusCode().value());
+            }
+            Map<String, Object> responseBody = response.getBody();
+            if (!"success".equalsIgnoreCase(String.valueOf(responseBody.get("status")))) {
+                throw new RuntimeException("Product Manager URL allocation returned status: " + responseBody.get("status"));
+            }
+            return responseBody;
+        } catch (ResourceAccessException e) {
+            throw new IOException("Failed to reach Product Manager for URL allocation", e);
+        } catch (HttpStatusCodeException e) {
+            throw new IOException(
+                    "Product Manager URL allocation failed with HTTP " + e.getStatusCode().value()
+                            + ": " + e.getResponseBodyAsString(),
+                    e
+            );
         }
     }
 

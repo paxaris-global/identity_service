@@ -705,14 +705,109 @@ public class KeycloakProductController {
     }
 
     // ------------------- PRODUCT -------------------
+    @GetMapping("{realm}/products/{productId}/deployment-status")
+    @Operation(
+            summary = "Product deployment progress",
+            description = "Poll after deploy to track ArgoCD/Kubernetes readiness until frontend and backend URLs respond"
+    )
+    @SecurityRequirement(name = "bearer")
+    public ResponseEntity<Map<String, Object>> getProductDeploymentStatus(
+            @PathVariable String realm,
+            @PathVariable String productId
+    ) {
+        return ResponseEntity.ok(productService.getProductDeploymentStatus(realm, productId));
+    }
+
+    @PostMapping(
+            value = "{realm}/products/keycloak",
+            consumes = MediaType.APPLICATION_JSON_VALUE
+    )
+    @Operation(
+            summary = "Create Product in Keycloak (phase 1)",
+            description = "Reserves product URLs and creates the Keycloak client. Call this before deployment; " +
+                    "full GitHub/Argo provisioning runs only after this returns success."
+    )
+    @SecurityRequirement(name = "bearer")
+    public ResponseEntity<SignupStatus> createProductInKeycloak(
+            @PathVariable String realm,
+            @RequestBody Map<String, Object> productRequest,
+            @RequestHeader("Authorization") String authorizationHeader
+    ) {
+        String productId = productRequest.get("productId").toString();
+        boolean publicClient = Boolean.parseBoolean(
+                productRequest.getOrDefault("publicClient", "false").toString()
+        );
+
+        SignupStatus status = SignupStatus.builder()
+                .status("IN_PROGRESS")
+                .message("Creating product in Keycloak")
+                .steps(new ArrayList<>())
+                .build();
+
+        try {
+            productService.createProductInKeycloak(realm, productId, publicClient, status);
+            return ResponseEntity.status(HttpStatus.CREATED).body(status);
+        } catch (Exception e) {
+            status.setStatus("FAILED");
+            status.setMessage(e.getMessage());
+            if (isConflictException(e)) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(status);
+            }
+            if (isServiceUnavailableException(e)) {
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(status);
+            }
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(status);
+        }
+    }
+
+    @PostMapping(
+            value = "{realm}/products/deploy",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    @Operation(
+            summary = "Deploy Product (phase 2)",
+            description = "Runs GitHub and Kubernetes provisioning after the Keycloak client already exists."
+    )
+    @SecurityRequirement(name = "bearer")
+    public ResponseEntity<SignupStatus> deployProduct(
+            @PathVariable String realm,
+            @RequestPart("product") Map<String, Object> productRequest,
+            @RequestPart("backendZip") MultipartFile backendZip,
+            @RequestPart("frontendZip") MultipartFile frontendZip,
+            @RequestHeader("Authorization") String authorizationHeader
+    ) {
+        String userToken = authorizationHeader.startsWith("Bearer ")
+                ? authorizationHeader.substring(7)
+                : authorizationHeader;
+        String productId = productRequest.get("productId").toString();
+        String username = extractUsernameFromToken(userToken);
+
+        SignupStatus status = SignupStatus.builder()
+                .status("IN_PROGRESS")
+                .message("Deploying product application")
+                .steps(new ArrayList<>())
+                .build();
+
+        try {
+            productService.deployProduct(realm, productId, backendZip, frontendZip, status, username);
+            return ResponseEntity.status(HttpStatus.CREATED).body(status);
+        } catch (Exception e) {
+            status.setStatus("FAILED");
+            status.setMessage(e.getMessage());
+            if (isServiceUnavailableException(e)) {
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(status);
+            }
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(status);
+        }
+    }
+
     @PostMapping(
             value = "{realm}/products",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE
     )
     @Operation(
             summary = "Create Product with Deployment",
-            description = "Creates a new product in Keycloak and deploys backend/frontend applications. " +
-                    "This endpoint handles complete product provisioning including Docker deployment and GitHub repository setup."
+            description = "Creates the Keycloak client first; on success, deploys backend/frontend applications."
     )
     @SecurityRequirement(name = "bearer")
     @ApiResponses(value = {
@@ -759,12 +854,6 @@ public class KeycloakProductController {
                 ? authorizationHeader.substring(7)
                 : authorizationHeader;
 
-        // 🔑 Admin token for Keycloak admin APIs
-        String masterToken = productService
-                .getMyRealmToken(adminUsername, adminPassword, keycloakClientId, masterRealm)
-                .get("access_token")
-                .toString();
-
         String productId = productRequest.get("productId").toString();
 
         boolean publicClient = Boolean.parseBoolean(
@@ -775,37 +864,32 @@ public class KeycloakProductController {
 
         SignupStatus status = SignupStatus.builder()
                 .status("IN_PROGRESS")
-                .message("Provisioning started")
+                .message("Creating product in Keycloak")
                 .steps(new ArrayList<>())
                 .build();
 
         try {
-
-            productService.createProduct(
-                    realm,
-                    productId,
-                    publicClient,
-                    masterToken,
-                    backendZip,
-                    frontendZip,
-                    status,
-                    username
-            );
-
-                        return ResponseEntity.status(HttpStatus.CREATED).body(status);
-
+            productService.createProductInKeycloak(realm, productId, publicClient, status);
+            productService.deployProduct(realm, productId, backendZip, frontendZip, status, username);
+            return ResponseEntity.status(HttpStatus.CREATED).body(status);
         } catch (Exception e) {
             status.setStatus("FAILED");
             status.setMessage(e.getMessage());
 
-                        if (isConflictException(e)) {
-                                return ResponseEntity.status(HttpStatus.CONFLICT).body(status);
-                        }
-
-                        if (isServiceUnavailableException(e)) {
-                                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(status);
-                        }
-
+            if (isConflictException(e)) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(status);
+            }
+            if (isServiceUnavailableException(e)) {
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(status);
+            }
+            if ("KEYCLOAK_SUCCESS".equals(status.getStatus()) || status.getMessage() != null
+                    && status.getMessage().contains("Keycloak client exists")) {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(status);
+            }
+            if (status.getSteps() != null && status.getSteps().stream()
+                    .anyMatch(s -> "Create Product in Keycloak".equals(s.getStepName()) && "FAILED".equals(s.getStatus()))) {
+                return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(status);
+            }
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(status);
         }
     }
@@ -1036,7 +1120,7 @@ public class KeycloakProductController {
             @RequestHeader("Authorization") String authorizationHeader,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "User details for creation",
-                    required = true,
+                    required = true,    
                     content = @Content(
                             mediaType = "application/json",
                             schema = @Schema(example = """
