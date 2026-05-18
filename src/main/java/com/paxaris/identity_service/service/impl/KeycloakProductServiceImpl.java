@@ -458,6 +458,8 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
 
         Path backendPath = null;
         Path frontendPath = null;
+        Map<String, Object> provisioningResult = null;
+        String frontendBaseUrl = null;
 
         try {
             status.addStep("Extract Application Code", "IN_PROGRESS", "Extracting ZIP files");
@@ -475,7 +477,7 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             Path frontendSourcePath = resolveProvisioningSourceRoot(frontendPath);
 
             status.addStep("Create GitHub Repositories", "IN_PROGRESS", "Creating and provisioning repositories");
-            Map<String, Object> provisioningResult = provisionProductViaProductManager(
+            provisioningResult = provisionProductViaProductManager(
                     realm,
                     clientId,
                     backendRepo,
@@ -483,7 +485,7 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
                     backendSourcePath,
                     frontendSourcePath
             );
-            String frontendBaseUrl = requireString(provisioningResult, "frontendBaseUrl");
+            frontendBaseUrl = requireString(provisioningResult, "frontendBaseUrl");
             String backendBaseUrl = requireString(provisioningResult, "backendBaseUrl");
             status.addStep(
                     "Create GitHub Repositories",
@@ -516,6 +518,13 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             handleProvisioningFailure(status, e);
             cleanupDirectory(backendPath);
             cleanupDirectory(frontendPath);
+            if (frontendBaseUrl != null && !frontendBaseUrl.isBlank()) {
+                throw new RuntimeException(
+                        "GitHub/Argo deployment completed at " + frontendBaseUrl
+                                + ", but Keycloak client '" + clientId + "' was not created: " + e.getMessage(),
+                        e
+                );
+            }
             throw new RuntimeException("Product provisioning failed: " + e.getMessage(), e);
         }
     }
