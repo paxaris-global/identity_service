@@ -497,7 +497,9 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
             status.addStep("Upload Code to GitHub", "SUCCESS", "Code uploaded successfully");
 
             status.addStep("Create Product", "IN_PROGRESS", "Creating or updating Keycloak product URL");
-            String clientUUID = createKeycloakClient(realm, clientId, isPublicClient, frontendBaseUrl, adminToken);
+            // Product Manager provisioning can take several minutes; the controller's master token may expire.
+            String freshAdminToken = getMasterToken();
+            String clientUUID = createKeycloakClient(realm, clientId, isPublicClient, frontendBaseUrl, freshAdminToken);
             status.addStep("Create Product", "SUCCESS", "Product URL saved in Keycloak: " + frontendBaseUrl);
 
             cleanupDirectory(backendPath);
