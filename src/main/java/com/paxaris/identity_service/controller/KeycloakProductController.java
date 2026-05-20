@@ -730,7 +730,7 @@ public class KeycloakProductController {
     @SecurityRequirement(name = "bearer")
     public ResponseEntity<SignupStatus> createProductInKeycloak(
             @PathVariable String realm,
-            @RequestBody Map<String, Object> productRequest,
+            @org.springframework.web.bind.annotation.RequestBody Map<String, Object> productRequest,
             @RequestHeader("Authorization") String authorizationHeader
     ) {
         String productId = productRequest.get("productId").toString();
