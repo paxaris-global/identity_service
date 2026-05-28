@@ -58,6 +58,12 @@ public interface KeycloakProductService {
                 String ownerUsername
         );
 
+        void uploadProductBanner(
+                String realm,
+                String productId,
+                MultipartFile bannerImage
+        );
+
         Map<String, Object> getProductDeploymentStatus(String realm, String productId);
 
         String createProduct(
@@ -74,6 +80,11 @@ public interface KeycloakProductService {
         List<Map<String, Object>> getAllProducts(String realm, String token);
 
         String getProductSecret(String realm, String productId, String token);
+
+        /**
+         * Makes an uploaded product client ready for app-to-app integration (confidential + secret).
+         */
+        String ensureProductClientSecret(String realm, String productId);
 
         String getProductUUID(String realm, String productName, String token);
 

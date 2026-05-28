@@ -75,6 +75,9 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
     @Value("${project.management.product-deployment-status-path}")
     private String productDeploymentStatusPath;
 
+    @Value("${project.management.showcase-base-path:/api/v1/project/showcases}")
+    private String showcaseBasePath;
+
     @Value("${keycloak.client-id}")
     private String adminCliClient;
 
@@ -600,6 +603,36 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
     }
 
     @Override
+    public void uploadProductBanner(String realm, String productId, MultipartFile bannerImage) {
+        if (bannerImage == null || bannerImage.isEmpty()) {
+            return;
+        }
+
+        String uploadUrl = projectManagementBaseUrl
+                + showcaseBasePath
+                + "/"
+                + realm
+                + "/"
+                + productId
+                + "/banner";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+
+        LinkedMultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("bannerImage", bannerImage.getResource());
+        body.add("productName", productId);
+
+        try {
+            restTemplate.postForEntity(uploadUrl, new HttpEntity<>(body, headers), Map.class);
+            log.info("Uploaded custom banner for realm='{}', product='{}'", realm, productId);
+        } catch (Exception ex) {
+            throw new RuntimeException("Failed to upload product banner", ex);
+        }
+    }
+
+    @Override
     public Map<String, Object> getProductDeploymentStatus(String realm, String productId) {
         String statusUrl = projectManagementBaseUrl + productDeploymentStatusPath
                 + "/" + realm + "/" + productId + "/status";
@@ -783,6 +816,48 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
         } catch (Exception e) {
             log.error("Failed to fetch secret for '{}': {}", clientId, e.getMessage());
             throw new RuntimeException("Failed to fetch product secret", e);
+        }
+    }
+
+    @Override
+    public String ensureProductClientSecret(String realm, String productId) {
+        String token = getMasterToken();
+        String clientUUID = getProductUUID(realm, productId, token);
+        String existing = getProductSecret(realm, productId, token);
+        if (existing != null && !existing.isBlank()) {
+            return existing;
+        }
+
+        String clientUrl = buildUrl("/admin/realms/" + realm + "/clients/" + clientUUID);
+        HttpHeaders headers = createBearerHeaders(token);
+        try {
+            ResponseEntity<String> getResp = restTemplate.exchange(
+                    clientUrl, HttpMethod.GET, new HttpEntity<>(headers), String.class);
+            Map<String, Object> client = objectMapper.readValue(getResp.getBody(), new TypeReference<>() {});
+
+            if (Boolean.TRUE.equals(client.get("publicClient"))) {
+                client.put("publicClient", false);
+                client.put("clientAuthenticatorType", "client-secret");
+                client.put("serviceAccountsEnabled", true);
+                client.put("directAccessGrantsEnabled", true);
+                client.put("standardFlowEnabled", true);
+                client.put("bearerOnly", false);
+                updateKeycloakClient(realm, clientUUID, client, token);
+                log.info(
+                        "Converted product '{}' in realm '{}' to confidential client for app-to-app integration",
+                        productId,
+                        realm);
+            }
+
+            ensureClientSecret(realm, clientUUID, token);
+            String secret = getProductSecret(realm, productId, token);
+            if (secret == null || secret.isBlank()) {
+                throw new IllegalStateException("Failed to generate client secret for product " + productId);
+            }
+            return secret;
+        } catch (Exception e) {
+            log.error("Failed to ensure client secret for '{}' in realm '{}': {}", productId, realm, e.getMessage());
+            throw new RuntimeException("Failed to ensure product client secret", e);
         }
     }
 

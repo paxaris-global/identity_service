@@ -100,11 +100,11 @@ public class ProductIntegrationServiceImpl implements ProductIntegrationService 
 
         String clientSecret = keycloakProductService.getProductSecret(realm, productId, masterToken);
         if (clientSecret == null || clientSecret.isBlank()) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Product '"
-                            + productId
-                            + "' has no client secret. Regenerate credentials in Keycloak or recreate the product.");
+            log.info(
+                    "Product '{}' in realm '{}' has no client secret; generating confidential client credentials",
+                    productId,
+                    realm);
+            clientSecret = keycloakProductService.ensureProductClientSecret(realm, productId);
         }
 
         try {
