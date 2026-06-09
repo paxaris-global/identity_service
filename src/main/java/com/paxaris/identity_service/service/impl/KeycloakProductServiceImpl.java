@@ -603,7 +603,12 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
     }
 
     @Override
-    public void uploadProductBanner(String realm, String productId, MultipartFile bannerImage) {
+    public void uploadProductBanner(
+            String realm,
+            String productId,
+            MultipartFile bannerImage,
+            String catalogDescription
+    ) {
         if (bannerImage == null || bannerImage.isEmpty()) {
             return;
         }
@@ -623,12 +628,48 @@ public class KeycloakProductServiceImpl implements KeycloakProductService {
         LinkedMultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
         body.add("bannerImage", bannerImage.getResource());
         body.add("productName", productId);
+        if (catalogDescription != null && !catalogDescription.isBlank()) {
+            body.add("description", catalogDescription.trim());
+        }
 
         try {
             restTemplate.postForEntity(uploadUrl, new HttpEntity<>(body, headers), Map.class);
             log.info("Uploaded custom banner for realm='{}', product='{}'", realm, productId);
         } catch (Exception ex) {
             throw new RuntimeException("Failed to upload product banner", ex);
+        }
+    }
+
+    @Override
+    public void saveProductCatalogDescription(String realm, String productId, String catalogDescription) {
+        if (catalogDescription == null || catalogDescription.isBlank()) {
+            throw new IllegalArgumentException("Catalog description is required");
+        }
+
+        String saveUrl = projectManagementBaseUrl
+                + showcaseBasePath
+                + "/"
+                + realm
+                + "/"
+                + productId
+                + "/description";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+
+        Map<String, String> body = Map.of("description", catalogDescription.trim());
+
+        try {
+            restTemplate.exchange(
+                    saveUrl,
+                    org.springframework.http.HttpMethod.PUT,
+                    new HttpEntity<>(body, headers),
+                    Map.class
+            );
+            log.info("Saved catalog description for realm='{}', product='{}'", realm, productId);
+        } catch (Exception ex) {
+            throw new RuntimeException("Failed to save product catalog description", ex);
         }
     }
 

@@ -774,6 +774,7 @@ public class KeycloakProductController {
             @RequestPart("product") Map<String, Object> productRequest,
             @RequestPart("backendZip") MultipartFile backendZip,
             @RequestPart("frontendZip") MultipartFile frontendZip,
+            @RequestPart(value = "bannerImage", required = false) MultipartFile bannerImage,
             @RequestHeader("Authorization") String authorizationHeader
     ) {
         String userToken = authorizationHeader.startsWith("Bearer ")
@@ -789,7 +790,10 @@ public class KeycloakProductController {
                 .build();
 
         try {
+            String catalogDescription = requireCatalogDescription(productRequest);
+            productService.saveProductCatalogDescription(realm, productId, catalogDescription);
             productService.deployProduct(realm, productId, backendZip, frontendZip, status, username);
+            productService.uploadProductBanner(realm, productId, bannerImage, catalogDescription);
             return ResponseEntity.status(HttpStatus.CREATED).body(status);
         } catch (Exception e) {
             status.setStatus("FAILED");
@@ -845,6 +849,8 @@ public class KeycloakProductController {
             @RequestPart("backendZip") MultipartFile backendZip,
             @Parameter(description = "Frontend application ZIP file", required = true)
             @RequestPart("frontendZip") MultipartFile frontendZip,
+            @Parameter(description = "Optional banner image shown in product card", required = false)
+            @RequestPart(value = "bannerImage", required = false) MultipartFile bannerImage,
             @Parameter(description = "JWT Bearer token", required = true)
             @RequestHeader("Authorization") String authorizationHeader
     ) {
@@ -869,8 +875,11 @@ public class KeycloakProductController {
                 .build();
 
         try {
+            String catalogDescription = requireCatalogDescription(productRequest);
             productService.createProductInKeycloak(realm, productId, publicClient, status);
+            productService.saveProductCatalogDescription(realm, productId, catalogDescription);
             productService.deployProduct(realm, productId, backendZip, frontendZip, status, username);
+            productService.uploadProductBanner(realm, productId, bannerImage, catalogDescription);
             return ResponseEntity.status(HttpStatus.CREATED).body(status);
         } catch (Exception e) {
             status.setStatus("FAILED");
@@ -908,6 +917,7 @@ public class KeycloakProductController {
             @RequestPart("client") Map<String, Object> clientRequest,
             @RequestPart("backendZip") MultipartFile backendZip,
             @RequestPart("frontendZip") MultipartFile frontendZip,
+            @RequestPart(value = "bannerImage", required = false) MultipartFile bannerImage,
             @RequestPart(value = "frontendBaseUrl", required = false) String frontendBaseUrl,
             @RequestHeader("Authorization") String authorizationHeader
     ) {
@@ -925,6 +935,7 @@ public class KeycloakProductController {
                 productRequest,
                 backendZip,
                 frontendZip,
+                bannerImage,
                 authorizationHeader
         );
     }
@@ -937,6 +948,21 @@ public class KeycloakProductController {
         } catch (Exception e) {
             return "system";
         }
+    }
+
+    private String requireCatalogDescription(Map<String, Object> productRequest) {
+        Object raw = productRequest.get("catalogDescription");
+        if (raw == null) {
+            raw = productRequest.get("description");
+        }
+        String description = raw == null ? "" : raw.toString().trim();
+        if (description.length() < 10) {
+            throw new IllegalArgumentException("Catalog description is required and must be at least 10 characters");
+        }
+        if (description.length() > 2000) {
+            throw new IllegalArgumentException("Catalog description must be at most 2000 characters");
+        }
+        return description;
     }
 
         private boolean isConflictStatus(SignupStatus status) {

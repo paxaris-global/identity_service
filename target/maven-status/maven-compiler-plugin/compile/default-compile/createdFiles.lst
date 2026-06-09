@@ -14,6 +14,7 @@ com/paxaris/identity_service/service/impl/KeycloakProductServiceImpl$9.class
 com/paxaris/identity_service/dto/SignupStatus$SignupStatusBuilder.class
 com/paxaris/identity_service/service/impl/KeycloakProductServiceImpl$12.class
 com/paxaris/identity_service/dto/RoleCreationRequest.class
+com/paxaris/identity_service/service/impl/KeycloakProductServiceImpl$19.class
 com/paxaris/identity_service/service/DynamicJwtDecoder.class
 com/paxaris/identity_service/controller/KeycloakProductController.class
 com/paxaris/identity_service/service/impl/KeycloakProductServiceImpl$1.class

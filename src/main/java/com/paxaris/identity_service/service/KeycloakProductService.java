@@ -61,7 +61,14 @@ public interface KeycloakProductService {
         void uploadProductBanner(
                 String realm,
                 String productId,
-                MultipartFile bannerImage
+                MultipartFile bannerImage,
+                String catalogDescription
+        );
+
+        void saveProductCatalogDescription(
+                String realm,
+                String productId,
+                String catalogDescription
         );
 
         Map<String, Object> getProductDeploymentStatus(String realm, String productId);
